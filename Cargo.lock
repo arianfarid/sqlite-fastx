@@ -103,6 +103,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "nucleodb"
+version = "0.1.0"
+dependencies = [
+ "seq_io",
+ "sqlite3_ext",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -160,14 +168,6 @@ name = "regex-syntax"
 version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
-
-[[package]]
-name = "rust-sqlite-dna-extension"
-version = "0.1.0"
-dependencies = [
- "seq_io",
- "sqlite3_ext",
-]
 
 [[package]]
 name = "rustix"

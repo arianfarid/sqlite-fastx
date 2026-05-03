@@ -42,6 +42,37 @@ CREATE TABLE fasta(
 
 ---
 
+## Build
+
+### Prerequisites
+
+- Rust (stable)
+- SQLite with extension loading enabled
+
+### Build release library
+
+```bash
+cargo build --release
+```
+
+### Output
+
+The compiled SQLite extension will be located at:
+
+- Linux: `target/release/libnucleodb.so`
+- macOS: `target/release/libnucleodb.dylib`
+- Windows: `target/release/nucleodb.dll`
+
+### Load into SQLite CLI
+
+```bash
+sqlite3
+```
+
+```sql
+.load ./target/release/libnucleodb
+```
+
 ## Usage
 
 ### Create Virtual Table
