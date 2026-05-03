@@ -166,10 +166,6 @@ sqlite3_ext = "*"
 
 ## Performance
 
-NucleoDB pushes filters down into the FASTA stream, skipping non-matching
-records before they reach SQLite. This is measurably faster than letting
-SQLite filter after fetching rows.
-
 Benchmarked on an Apple M2 (24GB) with 10,000 sequences (50–500 bases each):
 
 | Query                             | Pushdown | No Pushdown | Speedup |
@@ -177,7 +173,3 @@ Benchmarked on an Apple M2 (24GB) with 10,000 sequences (50–500 bases each):
 | `WHERE length > 100 AND length < 200` | 0.64 ms  | 1.79 ms  | 2.7x    |
 | `WHERE sequence LIKE '%ACGT%'`        | 4.71 ms  | 13.24 ms | 2.8x    |
 | `WHERE length > 100 AND sequence LIKE '%ACGT%'` | 4.46 ms | 12.39 ms | 2.8x |
-
-> Run `cargo bench` to reproduce on your hardware.
-> 
-> Note: Benchmarks were run on Apple Silicon. Performance on Linux x86 will differ.
