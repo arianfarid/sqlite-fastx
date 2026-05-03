@@ -1,5 +1,5 @@
 use seq_io::{fasta::*, policy::StdPolicy};
-use sqlite3_ext::{Error, vtab::*, *};
+use sqlite3_ext::{Error, function::FunctionOptions, vtab::*, *};
 use std::fs::File;
 
 enum Predicate {
@@ -330,8 +330,24 @@ impl VTab<'_> for FastaModule {
     }
 }
 
+fn compute_gc(seq: &[u8]) -> f64 {
+    if seq.is_empty() {
+        return 0.0;
+    }
+    let gc = seq
+        .iter()
+        .filter(|&&b| b == b'G' || b == b'C' || b == b'g' || b == b'c')
+        .count();
+    gc as f64 / seq.len() as f64
+}
+
 #[sqlite3_ext_main]
 pub fn init(db: &Connection) -> Result<()> {
     db.create_module("fasta", FastaModule::module(), ())?;
+    db.create_scalar_function("gc_content", &FunctionOptions::default(), |ctx, args| {
+        let seq = args[0].get_str()?;
+        let gc = compute_gc(seq.as_bytes());
+        ctx.set_result(gc)
+    })?;
     Ok(())
 }
