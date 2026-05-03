@@ -2,6 +2,17 @@ use seq_io::{fasta::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
 use std::fs::File;
 
+enum Predicate {
+    Length(LengthFilter),
+    // TODO: GC, Substring
+}
+impl Predicate {
+    fn matches(&self, record: &RefRecord) -> bool {
+        match self {
+            Predicate::Length(f) => f.matches(record.seq().len() as i64),
+        }
+    }
+}
 #[repr(i32)]
 enum LengthOp {
     Gt,
@@ -21,7 +32,6 @@ impl LengthOp {
         }
     }
 }
-
 struct LengthFilter {
     op: LengthOp,
     value: i64,
@@ -38,18 +48,15 @@ impl LengthFilter {
     }
 }
 struct ExecPlan {
-    length_filters: Vec<LengthFilter>,
+    predicates: Vec<Predicate>,
 }
 impl ExecPlan {
     fn new() -> ExecPlan {
-        ExecPlan {
-            length_filters: vec![],
-        }
+        ExecPlan { predicates: vec![] }
     }
     fn matches(&self, record: &RefRecord) -> bool {
-        for filter in &self.length_filters {
-            let len = record.seq().len() as i64;
-            if !filter.matches(len) {
+        for pred in &self.predicates {
+            if !pred.matches(record) {
                 return false;
             }
         }
@@ -69,9 +76,7 @@ struct FastaCursor {
 impl FastaCursor {
     fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result<ExecPlan> {
         let Some(descriptor) = index_str else {
-            return Ok(ExecPlan {
-                length_filters: vec![],
-            });
+            return Ok(ExecPlan { predicates: vec![] });
         };
 
         let mut filters = vec![];
@@ -88,10 +93,10 @@ impl FastaCursor {
                 "Eq" => LengthOp::Eq,
                 _ => continue,
             };
-            filters.push(LengthFilter { op, value })
+            filters.push(Predicate::Length(LengthFilter { op, value }))
         }
         Ok(ExecPlan {
-            length_filters: filters,
+            predicates: filters,
         })
     }
 }
