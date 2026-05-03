@@ -17,6 +17,8 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 
 ### Planned
 - Support substring search pushdown on `sequence` column (e.g. `LIKE '%ACGT%'`).
+- GC content as derived column + pushdown filtering (`gc_content > 0.6`)
+- Reverse complement function (e.g. `reverse_complement(sequence)`)
 - FASTQ support
 - Optional FM-Index for fast substring queries on materialized datasets
 
