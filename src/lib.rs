@@ -4,12 +4,14 @@ use std::fs::File;
 
 enum Predicate {
     Length(LengthFilter),
+    SequenceLike(SequenceFilter),
     // TODO: GC, Substring
 }
 impl Predicate {
     fn matches(&self, record: &RefRecord) -> bool {
         match self {
             Predicate::Length(f) => f.matches(record.seq().len() as i64),
+            Predicate::SequenceLike(s) => s.like(record.seq()),
         }
     }
 }
@@ -32,6 +34,23 @@ impl LengthOp {
         }
     }
 }
+
+enum SequenceOp {
+    Contains,
+    StartsWith,
+    EndsWith,
+    Eq,
+}
+impl SequenceOp {
+    fn as_str(&self) -> &'static str {
+        match self {
+            SequenceOp::Contains => "Contains",
+            SequenceOp::StartsWith => "StartsWith",
+            SequenceOp::EndsWith => "EndsWith",
+            SequenceOp::Eq => "Eq",
+        }
+    }
+}
 struct LengthFilter {
     op: LengthOp,
     value: i64,
@@ -47,6 +66,23 @@ impl LengthFilter {
         }
     }
 }
+struct SequenceFilter {
+    op: SequenceOp,
+    pattern: String,
+}
+impl SequenceFilter {
+    fn like(&self, seq: &[u8]) -> bool {
+        match self.op {
+            SequenceOp::Contains => seq
+                .windows(self.pattern.len())
+                .any(|w| w == self.pattern.as_bytes()),
+            SequenceOp::StartsWith => seq.starts_with(self.pattern.as_bytes()),
+            SequenceOp::EndsWith => seq.ends_with(self.pattern.as_bytes()),
+            SequenceOp::Eq => seq == self.pattern.as_bytes(),
+        }
+    }
+}
+
 struct ExecPlan {
     predicates: Vec<Predicate>,
 }
@@ -79,25 +115,50 @@ impl FastaCursor {
             return Ok(ExecPlan { predicates: vec![] });
         };
 
-        let mut filters = vec![];
+        let mut predicates = vec![];
         for (i, op_str) in descriptor.split(',').enumerate() {
             if i >= args.len() {
                 break;
             }
-            let value = args[i].get_i64();
-            let op = match op_str {
-                "Gt" => LengthOp::Gt,
-                "Ge" => LengthOp::Ge,
-                "Lt" => LengthOp::Lt,
-                "Le" => LengthOp::Le,
-                "Eq" => LengthOp::Eq,
+            let arg = &mut args[i];
+            match op_str {
+                "Gt" => predicates.push(Predicate::Length(LengthFilter {
+                    op: LengthOp::Gt,
+                    value: arg.get_i64(),
+                })),
+                "Ge" => predicates.push(Predicate::Length(LengthFilter {
+                    op: LengthOp::Ge,
+                    value: arg.get_i64(),
+                })),
+                "Lt" => predicates.push(Predicate::Length(LengthFilter {
+                    op: LengthOp::Lt,
+                    value: arg.get_i64(),
+                })),
+                "Le" => predicates.push(Predicate::Length(LengthFilter {
+                    op: LengthOp::Le,
+                    value: arg.get_i64(),
+                })),
+                "Eq" => predicates.push(Predicate::Length(LengthFilter {
+                    op: LengthOp::Eq,
+                    value: arg.get_i64(),
+                })),
+                "Like" => {
+                    let raw = arg.get_str()?.to_string();
+                    let starts_with_wild = raw.starts_with('%');
+                    let ends_with_wild = raw.ends_with('%');
+                    let pattern = raw.trim_matches('%').to_ascii_uppercase();
+                    let op = match (starts_with_wild, ends_with_wild) {
+                        (true, true) => SequenceOp::Contains,
+                        (true, false) => SequenceOp::StartsWith,
+                        (false, true) => SequenceOp::EndsWith,
+                        (false, false) => SequenceOp::Eq,
+                    };
+                    predicates.push(Predicate::SequenceLike(SequenceFilter { op, pattern }))
+                }
                 _ => continue,
             };
-            filters.push(Predicate::Length(LengthFilter { op, value }))
         }
-        Ok(ExecPlan {
-            predicates: filters,
-        })
+        Ok(ExecPlan { predicates })
     }
 }
 
@@ -209,16 +270,25 @@ impl VTab<'_> for FastaModule {
         let mut usable = vec![];
         for (i, constraint) in index_info.constraints().enumerate() {
             // Length column constraints
-            if constraint.usable() && constraint.column() == 3 {
-                match constraint.op() {
-                    ConstraintOp::GT
-                    | ConstraintOp::GE
-                    | ConstraintOp::LT
-                    | ConstraintOp::LE
-                    | ConstraintOp::Eq => {
-                        usable.push((i, constraint.op()));
+            if constraint.usable() {
+                match constraint.column() {
+                    2 => {
+                        match constraint.op() {
+                            ConstraintOp::Like => usable.push((i, constraint.op())),
+                            _ => {} //No op
+                        }
                     }
-                    _ => {}
+                    3 => match constraint.op() {
+                        ConstraintOp::GT
+                        | ConstraintOp::GE
+                        | ConstraintOp::LT
+                        | ConstraintOp::LE
+                        | ConstraintOp::Eq => {
+                            usable.push((i, constraint.op()));
+                        }
+                        _ => {}
+                    },
+                    _ => {} // No op
                 }
             }
         }
@@ -237,6 +307,7 @@ impl VTab<'_> for FastaModule {
                         ConstraintOp::LT => LengthOp::Lt.as_str(),
                         ConstraintOp::LE => LengthOp::Le.as_str(),
                         ConstraintOp::Eq => LengthOp::Eq.as_str(),
+                        ConstraintOp::Like => "Like",
                         _ => "Scan",
                     }
                 })
@@ -258,6 +329,7 @@ impl VTab<'_> for FastaModule {
         })
     }
 }
+
 #[sqlite3_ext_main]
 fn init(db: &Connection) -> Result<()> {
     db.create_module("fasta", FastaModule::module(), ())?;
