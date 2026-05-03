@@ -9,15 +9,12 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 ### Current
 - Stream FASTA files without loading into memory
 - Query FASTA using SQL
-- Pushdown filtering on sequence length:
-  - `length > ?`
-  - `length < ?`
-  - `length = ?`
+- Pushdown filtering on sequence length eg (`length > ?` or `sequence LIKE '%ACGT%'`)
 - Exposed as a SQLite virtual table module
 
 ### Planned
-- Support substring search pushdown on `sequence` column (e.g. `LIKE '%ACGT%'`).
 - GC content as derived column + pushdown filtering (`gc_content > 0.6`)
+- Exposed functions: `gc_content` and `reverse_complement`
 - Reverse complement function (e.g. `reverse_complement(sequence)`)
 - FASTQ support
 - Optional FM-Index for fast substring queries on materialized datasets
@@ -106,15 +103,29 @@ Applied during scan rather than post-filtering.
 
 ### Supported Pushdowns
 
+#### Sequence Length
+
 | SQL Constraint     | Behavior                |
 |-------------------|------------------------|
 | `length > ?`      | Applied during scan    |
 | `length >= ?`     | Applied during scan    |
 | `length < ?`      | Applied during scan    |
 | `length <= ?`     | Applied during scan    |
-| `length = ?`      | Converted to range     |
+| `length = ?`      | Applied during scan     |
 
+#### Sequence
 ---
+| SQL Constraint     | Behavior                |
+|-------------------|------------------------|
+| `sequence LIKE '%pattern%'`      | Applied during scan    |
+| `sequence LIKE 'pattern%'`     | Applied during scan    |
+| `sequence LIKE '%pattern'`      | Applied during scan    |
+| `sequence LIKE 'pattern'`     | Applied during scan    |
+
+
+#### Combining filters
+
+Multiple filters are be composed and all records must pass the condition to be returned. Note `OR` statements will typically bypass pushdown. Statements using `OR` conditions are evalulated by SQLite after fetching all rows.
 
 ## Architecture
 
