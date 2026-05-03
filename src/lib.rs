@@ -118,7 +118,6 @@ impl VTab<'_> for FastaModule {
     type Aux = ();
     type Cursor = FastaCursor;
     fn connect(_db: &VTabConnection, _aux: &Self::Aux, args: &[&str]) -> Result<(String, Self)> {
-        eprintln!("connect args: {:?}", args);
         let filename = args
             .get(3)
             .map(|s| {
