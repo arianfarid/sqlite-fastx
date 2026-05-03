@@ -331,7 +331,7 @@ impl VTab<'_> for FastaModule {
 }
 
 #[sqlite3_ext_main]
-fn init(db: &Connection) -> Result<()> {
+pub fn init(db: &Connection) -> Result<()> {
     db.create_module("fasta", FastaModule::module(), ())?;
     Ok(())
 }
