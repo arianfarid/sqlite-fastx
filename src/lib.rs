@@ -341,6 +341,26 @@ fn compute_gc(seq: &[u8]) -> f64 {
     gc as f64 / seq.len() as f64
 }
 
+fn dna_to_rna(seq: &[u8]) -> Vec<u8> {
+    seq.iter()
+        .map(|&b| match b {
+            b'T' => b'U',
+            b't' => b'u',
+            _ => b,
+        })
+        .collect()
+}
+
+fn rna_to_dna(seq: &[u8]) -> Vec<u8> {
+    seq.iter()
+        .map(|&b| match b {
+            b'U' => b'T',
+            b'u' => b't',
+            _ => b,
+        })
+        .collect()
+}
+
 #[sqlite3_ext_main]
 pub fn init(db: &Connection) -> Result<()> {
     db.create_module("fasta", FastaModule::module(), ())?;
@@ -349,5 +369,123 @@ pub fn init(db: &Connection) -> Result<()> {
         let gc = compute_gc(seq.as_bytes());
         ctx.set_result(gc)
     })?;
+    db.create_scalar_function("to_rna", &FunctionOptions::default(), |ctx, args| {
+        let seq = args[0].get_str()?;
+        let seq = dna_to_rna(seq.as_bytes());
+        ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
+    })?;
+    db.create_scalar_function("to_dna", &FunctionOptions::default(), |ctx, args| {
+        let seq = args[0].get_str()?;
+        let seq = rna_to_dna(seq.as_bytes());
+        ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
+    })?;
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // compute_gc tests
+    #[test]
+    fn gc_empty() {
+        assert_eq!(compute_gc(b""), 0.0);
+    }
+
+    #[test]
+    fn gc_all_gc() {
+        assert_eq!(compute_gc(b"GGCC"), 1.0);
+        assert_eq!(compute_gc(b"ggcc"), 1.0);
+    }
+
+    #[test]
+    fn gc_no_gc() {
+        assert_eq!(compute_gc(b"AATT"), 0.0);
+        assert_eq!(compute_gc(b"aatt"), 0.0);
+    }
+
+    #[test]
+    fn gc() {
+        assert_eq!(compute_gc(b"ACGT"), 0.5);
+    }
+
+    #[test]
+    fn gc_with_ambiguous_bases() {
+        assert_eq!(compute_gc(b"ATGCN"), 0.4);
+    }
+
+    //to_rna
+    #[test]
+    fn rna_converts_t_to_u() {
+        assert_eq!(dna_to_rna(b"ACGT"), b"ACGU");
+    }
+
+    #[test]
+    fn rna_lowercase_t() {
+        assert_eq!(dna_to_rna(b"acgt"), b"acgu");
+    }
+
+    #[test]
+    fn rna_no_t() {
+        assert_eq!(dna_to_rna(b"ACGA"), b"ACGA");
+    }
+
+    #[test]
+    fn rna_passthrough_non_dna() {
+        assert_eq!(dna_to_rna(b"AFCGA"), b"AFCGA");
+    }
+
+    // LengthFilter tests
+    #[test]
+    fn length_filter_gt() {
+        let f = LengthFilter {
+            op: LengthOp::Gt,
+            value: 10,
+        };
+        assert!(f.matches(11));
+        assert!(!f.matches(10));
+        assert!(!f.matches(9));
+    }
+
+    #[test]
+    fn length_filter_eq() {
+        let f = LengthFilter {
+            op: LengthOp::Eq,
+            value: 10,
+        };
+        assert!(f.matches(10));
+        assert!(!f.matches(11));
+        assert!(!f.matches(9));
+    }
+
+    // SequenceFilter tests
+    #[test]
+    fn sequence_filter_contains() {
+        let f = SequenceFilter {
+            op: SequenceOp::Contains,
+            pattern: "ACGT".to_string(),
+        };
+        assert!(f.like(b"GGACGTGG"));
+        assert!(!f.like(b"GGAAGGGG"));
+    }
+
+    #[test]
+    fn sequence_filter_starts_with() {
+        let f = SequenceFilter {
+            op: SequenceOp::StartsWith,
+            pattern: "ACGT".to_string(),
+        };
+        assert!(f.like(b"ACGTGGGG"));
+        assert!(!f.like(b"GGACGTGG"));
+    }
+
+    #[test]
+    fn sequence_filter_ends_with() {
+        let f = SequenceFilter {
+            op: SequenceOp::EndsWith,
+            pattern: "ACGT".to_string(),
+        };
+        assert!(f.like(b"GGGGACGT"));
+        assert!(!f.like(b"GGACGTGG"));
+    }
 }
