@@ -361,6 +361,25 @@ fn rna_to_dna(seq: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+fn reverse_complement(seq: &[u8]) -> Vec<u8> {
+    seq.iter()
+        .rev()
+        .map(|&b| match b {
+            b'A' => b'T',
+            b'a' => b't',
+            b'G' => b'C',
+            b'g' => b'c',
+            b'T' => b'A',
+            b't' => b'a',
+            b'C' => b'G',
+            b'c' => b'g',
+            b'U' => b'A',
+            b'u' => b'a',
+            _ => b,
+        })
+        .collect()
+}
+
 #[sqlite3_ext_main]
 pub fn init(db: &Connection) -> Result<()> {
     db.create_module("fasta", FastaModule::module(), ())?;
@@ -379,7 +398,15 @@ pub fn init(db: &Connection) -> Result<()> {
         let seq = rna_to_dna(seq.as_bytes());
         ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
     })?;
-
+    db.create_scalar_function(
+        "reverse_complement",
+        &FunctionOptions::default(),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let seq = reverse_complement(seq.as_bytes());
+            ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
+        },
+    )?;
     Ok(())
 }
 
@@ -433,6 +460,42 @@ mod tests {
     #[test]
     fn rna_passthrough_non_dna() {
         assert_eq!(dna_to_rna(b"AFCGA"), b"AFCGA");
+    }
+
+    //Reverse Complement
+    #[test]
+    fn reverse_complement_empty() {
+        assert_eq!(reverse_complement(b""), b"");
+    }
+
+    #[test]
+    fn reverse_complement_single_bases() {
+        assert_eq!(reverse_complement(b"A"), b"T");
+        assert_eq!(reverse_complement(b"T"), b"A");
+        assert_eq!(reverse_complement(b"G"), b"C");
+        assert_eq!(reverse_complement(b"C"), b"G");
+        assert_eq!(reverse_complement(b"U"), b"A");
+    }
+
+    #[test]
+    fn reverse_complement_ambiguous_passthrough() {
+        assert_eq!(reverse_complement(b"N"), b"N");
+        assert_eq!(reverse_complement(b"n"), b"n");
+    }
+
+    #[test]
+    fn reverse_complement_idempotent() {
+        let seq = b"ACGTACGT";
+        assert_eq!(reverse_complement(&reverse_complement(seq)), seq);
+    }
+
+    #[test]
+    fn reverse_complement_pure_dna() {
+        assert_eq!(reverse_complement(b"ACGT"), b"ACGT");
+    }
+
+    fn reverse() {
+        assert_eq!(reverse_complement(b"AGCTUagctuNn"), b"nNaagctAAGCT")
     }
 
     // LengthFilter tests
