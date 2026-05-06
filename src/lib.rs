@@ -361,6 +361,33 @@ fn rna_to_dna(seq: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+fn n_count(seq: &[u8]) -> i64 {
+    seq.iter().filter(|&b| matches!(b, b'n' | b'N')).count() as i64
+}
+
+fn base_count(seq: &[u8], base: u8) -> sqlite3_ext::Result<i64> {
+    if !matches!(
+        base.to_ascii_uppercase(),
+        b'A' | b'C' | b'G' | b'T' | b'U' | b'N'
+    ) {
+        return Err("Not a valid base".into());
+    }
+    let base = base.to_ascii_uppercase();
+    Ok(seq
+        .iter()
+        .filter(|b| b.to_ascii_uppercase() == base)
+        .count() as i64)
+}
+
+fn is_valid_dna(seq: &[u8]) -> bool {
+    seq.iter()
+        .all(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T' | b'N'))
+}
+fn is_valid_rna(seq: &[u8]) -> bool {
+    seq.iter()
+        .all(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'U' | b'N'))
+}
+
 fn reverse_complement(seq: &[u8]) -> Vec<u8> {
     seq.iter()
         .rev()
@@ -383,28 +410,81 @@ fn reverse_complement(seq: &[u8]) -> Vec<u8> {
 #[sqlite3_ext_main]
 pub fn init(db: &Connection) -> Result<()> {
     db.create_module("fasta", FastaModule::module(), ())?;
-    db.create_scalar_function("gc_content", &FunctionOptions::default(), |ctx, args| {
-        let seq = args[0].get_str()?;
-        let gc = compute_gc(seq.as_bytes());
-        ctx.set_result(gc)
-    })?;
-    db.create_scalar_function("to_rna", &FunctionOptions::default(), |ctx, args| {
-        let seq = args[0].get_str()?;
-        let seq = dna_to_rna(seq.as_bytes());
-        ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
-    })?;
-    db.create_scalar_function("to_dna", &FunctionOptions::default(), |ctx, args| {
-        let seq = args[0].get_str()?;
-        let seq = rna_to_dna(seq.as_bytes());
-        ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
-    })?;
+    db.create_scalar_function(
+        "gc_content",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let gc = compute_gc(seq.as_bytes());
+            ctx.set_result(gc)
+        },
+    )?;
+    db.create_scalar_function(
+        "n_count",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let count = n_count(seq.as_bytes());
+            ctx.set_result(count)
+        },
+    )?;
+    db.create_scalar_function(
+        "base_count",
+        &FunctionOptions::default().set_n_args(2),
+        |ctx, args| {
+            let seq = args[0].get_str()?.to_string();
+            let base_str = &args[1].get_str()?.to_string();
+            let base = base_str
+                .as_bytes()
+                .first()
+                .ok_or_else(|| "base_count requires a non-empty base argument")?;
+            let count = base_count(seq.as_bytes(), *base)?;
+            ctx.set_result(count)
+        },
+    )?;
+    db.create_scalar_function(
+        "to_rna",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let seq = dna_to_rna(seq.as_bytes());
+            ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
+        },
+    )?;
+    db.create_scalar_function(
+        "to_dna",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let seq = rna_to_dna(seq.as_bytes());
+            ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
+        },
+    )?;
     db.create_scalar_function(
         "reverse_complement",
-        &FunctionOptions::default(),
+        &FunctionOptions::default().set_n_args(1),
         |ctx, args| {
             let seq = args[0].get_str()?;
             let seq = reverse_complement(seq.as_bytes());
             ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
+        },
+    )?;
+    db.create_scalar_function(
+        "is_valid_dna",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let valid = is_valid_dna(seq.as_bytes());
+            ctx.set_result(valid)
+        },
+    )?;
+    db.create_scalar_function(
+        "is_valid_rna",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let valid = is_valid_rna(seq.as_bytes());
+            ctx.set_result(valid)
         },
     )?;
     Ok(())
@@ -439,6 +519,55 @@ mod tests {
     #[test]
     fn gc_with_ambiguous_bases() {
         assert_eq!(compute_gc(b"ATGCN"), 0.4);
+    }
+
+    // n_count
+    #[test]
+    fn ncount_empty() {
+        assert_eq!(n_count(b""), 0);
+    }
+
+    #[test]
+    fn ncount_all_n() {
+        assert_eq!(n_count(b"NNNN"), 4);
+    }
+
+    #[test]
+    fn ncount_no_n() {
+        assert_eq!(n_count(b"ACGT"), 0);
+    }
+
+    #[test]
+    fn ncount_3n() {
+        assert_eq!(n_count(b"ACNGNTN"), 3);
+    }
+
+    #[test]
+    fn ncount_lower_n() {
+        assert_eq!(n_count(b"ACnGnTn"), 3);
+    }
+
+    // base_count
+    #[test]
+    fn base_count_basic() {
+        assert_eq!(base_count(b"ACGT", b'A'), Ok(1));
+        assert_eq!(base_count(b"AAAA", b'A'), Ok(4));
+    }
+
+    #[test]
+    fn base_count_case_insensitive() {
+        assert_eq!(base_count(b"AaCcGgTt", b'a'), Ok(2));
+        assert_eq!(base_count(b"AaCcGgTt", b'A'), Ok(2));
+    }
+
+    #[test]
+    fn base_count_invalid_base() {
+        assert!(base_count(b"ACGT", b'Z').is_err());
+    }
+
+    #[test]
+    fn base_count_empty() {
+        assert_eq!(base_count(b"", b'A'), Ok(0));
     }
 
     //to_rna
@@ -494,6 +623,7 @@ mod tests {
         assert_eq!(reverse_complement(b"ACGT"), b"ACGT");
     }
 
+    #[test]
     fn reverse() {
         assert_eq!(reverse_complement(b"AGCTUagctuNn"), b"nNaagctAAGCT")
     }
@@ -550,5 +680,111 @@ mod tests {
         };
         assert!(f.like(b"GGGGACGT"));
         assert!(!f.like(b"GGACGTGG"));
+    }
+
+    // is_valid_dna
+    #[test]
+    fn valid_dna_basic() {
+        assert!(is_valid_dna(b"ACGT"));
+    }
+
+    #[test]
+    fn valid_dna_lowercase() {
+        assert!(is_valid_dna(b"acgt"));
+    }
+
+    #[test]
+    fn valid_dna_mixed_case() {
+        assert!(is_valid_dna(b"AcGt"));
+    }
+
+    #[test]
+    fn valid_dna_with_n() {
+        assert!(is_valid_dna(b"ACGTN"));
+        assert!(is_valid_dna(b"acgtn"));
+    }
+
+    #[test]
+    fn valid_dna_empty() {
+        assert!(is_valid_dna(b""));
+    }
+
+    #[test]
+    fn valid_dna_rejects_u() {
+        assert!(!is_valid_dna(b"ACGTU"));
+    }
+
+    #[test]
+    fn valid_dna_rejects_invalid() {
+        assert!(!is_valid_dna(b"ACGTZ"));
+        assert!(!is_valid_dna(b"ACGT1"));
+        assert!(!is_valid_dna(b"ACGT!"));
+    }
+
+    #[test]
+    fn valid_dna_rejects_on_first_invalid() {
+        // invalid base at start — should short circuit
+        assert!(!is_valid_dna(b"ZACGT"));
+    }
+
+    #[test]
+    fn valid_dna_single_base() {
+        assert!(is_valid_dna(b"A"));
+        assert!(is_valid_dna(b"C"));
+        assert!(is_valid_dna(b"G"));
+        assert!(is_valid_dna(b"T"));
+        assert!(is_valid_dna(b"N"));
+        assert!(!is_valid_dna(b"U"));
+        assert!(!is_valid_dna(b"Z"));
+    }
+
+    // is_valid_rna
+    #[test]
+    fn valid_rna_basic() {
+        assert!(is_valid_rna(b"ACGU"));
+    }
+
+    #[test]
+    fn valid_rna_lowercase() {
+        assert!(is_valid_rna(b"acgu"));
+    }
+
+    #[test]
+    fn valid_rna_mixed_case() {
+        assert!(is_valid_rna(b"AcGu"));
+    }
+
+    #[test]
+    fn valid_rna_with_n() {
+        assert!(is_valid_rna(b"ACGUN"));
+        assert!(is_valid_rna(b"acgun"));
+    }
+
+    #[test]
+    fn valid_rna_empty() {
+        assert!(is_valid_rna(b""));
+    }
+
+    #[test]
+    fn valid_rna_rejects_t() {
+        assert!(!is_valid_rna(b"ACGT"));
+    }
+
+    #[test]
+    fn valid_rna_rejects_invalid() {
+        assert!(!is_valid_rna(b"ACGUZ"));
+        assert!(!is_valid_rna(b"ACGU1"));
+        assert!(!is_valid_rna(b"ACGU!"));
+    }
+
+    #[test]
+    fn valid_rna_single_base() {
+        assert!(is_valid_rna(b"A"));
+        assert!(is_valid_rna(b"C"));
+        assert!(is_valid_rna(b"G"));
+        assert!(is_valid_rna(b"U"));
+        assert!(is_valid_rna(b"N"));
+        assert!(!is_valid_rna(b"T"));
+        assert!(!is_valid_rna(b"Z"));
     }
 }
