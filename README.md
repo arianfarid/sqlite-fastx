@@ -27,7 +27,6 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 ### Planned
 - GC content as derived column + pushdown filtering (`gc_content > 0.6`)
 - Exposed functions: `codon_count`, `has_stop_codon`
-- Reverse complement function (e.g. `reverse_complement(sequence)`)
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`, 
 - FASTQ support
 - Gzip support (`.fa.gz`)
