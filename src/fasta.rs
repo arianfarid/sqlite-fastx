@@ -68,22 +68,23 @@ impl VTab<'_> for FastaModule {
     fn best_index(&self, index_info: &mut IndexInfo) -> Result<()> {
         let mut usable = vec![];
         for (i, constraint) in index_info.constraints().enumerate() {
-            // Length column constraints
             if constraint.usable() {
                 match constraint.column() {
+                    // Sequence
                     2 => {
                         match constraint.op() {
-                            ConstraintOp::Like => usable.push((i, constraint.op())),
+                            ConstraintOp::Like => usable.push((i, ("sequence", constraint.op()))),
                             _ => {} //No op
                         }
                     }
+                    // Length
                     3 => match constraint.op() {
                         ConstraintOp::GT
                         | ConstraintOp::GE
                         | ConstraintOp::LT
                         | ConstraintOp::LE
                         | ConstraintOp::Eq => {
-                            usable.push((i, constraint.op()));
+                            usable.push((i, ("length", constraint.op())));
                         }
                         _ => {}
                     },
@@ -100,7 +101,7 @@ impl VTab<'_> for FastaModule {
                 .map(|(i, c)| {
                     constraints[c.0].set_argv_index(Some(i as u32));
                     constraints[c.0].set_omit(true);
-                    match c.1 {
+                    let op_str = match c.1.1 {
                         ConstraintOp::GT => LengthOp::Gt.as_str(),
                         ConstraintOp::GE => LengthOp::Ge.as_str(),
                         ConstraintOp::LT => LengthOp::Lt.as_str(),
@@ -108,7 +109,9 @@ impl VTab<'_> for FastaModule {
                         ConstraintOp::Eq => LengthOp::Eq.as_str(),
                         ConstraintOp::Like => "Like",
                         _ => "Scan",
-                    }
+                    };
+                    let col_str = c.1.0;
+                    [col_str, op_str].join(":")
                 })
                 .collect::<Vec<_>>()
                 .join(",");

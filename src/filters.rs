@@ -109,33 +109,38 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
     };
 
     let mut predicates = vec![];
-    for (i, op_str) in descriptor.split(',').enumerate() {
+    for (i, token) in descriptor.split(',').enumerate() {
         if i >= args.len() {
             break;
         }
         let arg = &mut args[i];
-        match op_str {
-            "Gt" => predicates.push(Predicate::Length(LengthFilter {
+
+        let mut parts = token.splitn(2, ":");
+        let col = parts.next().unwrap_or("");
+        let op = parts.next().unwrap_or("");
+
+        match (col, op) {
+            ("length", "Gt") => predicates.push(Predicate::Length(LengthFilter {
                 op: LengthOp::Gt,
                 value: arg.get_i64(),
             })),
-            "Ge" => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Ge") => predicates.push(Predicate::Length(LengthFilter {
                 op: LengthOp::Ge,
                 value: arg.get_i64(),
             })),
-            "Lt" => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Lt") => predicates.push(Predicate::Length(LengthFilter {
                 op: LengthOp::Lt,
                 value: arg.get_i64(),
             })),
-            "Le" => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Le") => predicates.push(Predicate::Length(LengthFilter {
                 op: LengthOp::Le,
                 value: arg.get_i64(),
             })),
-            "Eq" => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Eq") => predicates.push(Predicate::Length(LengthFilter {
                 op: LengthOp::Eq,
                 value: arg.get_i64(),
             })),
-            "Like" => {
+            ("sequence", "Like") => {
                 let raw = arg.get_str()?.to_string();
                 let starts_with_wild = raw.starts_with('%');
                 let ends_with_wild = raw.ends_with('%');
