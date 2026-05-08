@@ -11,15 +11,13 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 - Query FASTA using SQL
 - Pushdown filtering on sequence length eg (`length > ?` or `sequence LIKE '%ACGT%'`)
 - Exposed as a SQLite virtual table module
+- Gzip support
 
 #### Exposed scalar functions:
 - `gc_content(sequence)` — GC content as a value between 0.0 and 1.0
-- `to_rna(sequence)` — converts DNA to RNA (T → U)
-- `to_dna(sequence)` — converts RNA to DNA (U → T)
 - `reverse_complement(sequence)` — reverse complement of a DNA/RNA sequence
 - `to_rna(sequence)` - DNA -> RNA (T->U)
 - `to_dna(sequence)` - DNA -> RNA (U->T)
-- `reverse_complement(sequence)` - Reverse complement of a DNA/RNA sequence
 - `is_valid_dna(sequence)` - True if sequence contains only A, G, C, T, or N
 - `is_valid_rna(sequence)` - True if sequence contains only A, G, C, U, or N
 
@@ -29,9 +27,7 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 - Exposed functions: `codon_count`, `has_stop_codon`
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`, 
 - FASTQ support
-- Gzip support (`.fa.gz`)
 - Optional FM-Index for fast substring queries on materialized datasets
-
 ---
 
 ## Table Schema

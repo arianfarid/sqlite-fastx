@@ -2,6 +2,8 @@
 GOALS.md
 PROJECT_PLAN.md
 TESTING.md
+bench.fa
+*.fa.gz
 test.fa
 testb.db
 .DS_Store

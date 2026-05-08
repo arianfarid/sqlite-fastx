@@ -1,15 +1,15 @@
-use seq_io::{fasta::*, policy::StdPolicy};
-use sqlite3_ext::{Error, vtab::*, *};
-use std::fs::File;
-
 use crate::{
     SequenceCursor,
     filters::{ExecPlan, LengthOp, parse_plan},
     reader::{SequenceReader, SequenceRecord},
 };
+use flate2::read::GzDecoder;
+use seq_io::{fasta::*, policy::StdPolicy};
+use sqlite3_ext::{Error, vtab::*, *};
+use std::{fs::File, io::Read};
 
 pub struct FastaSequenceReader {
-    pub reader: Reader<File, StdPolicy>,
+    pub reader: Reader<Box<dyn Read>, StdPolicy>,
 }
 impl SequenceReader for FastaSequenceReader {
     type Record = OwnedRecord;
@@ -143,11 +143,17 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
             return Err("filename constraint required".into());
         };
 
-        let file = File::open(&path)
-            .map_err(|e| return Error::from(format!("Cannot open file '{}': {}", path, e)))?;
-
+        let reader: Box<dyn Read> = if path.ends_with(".gz") {
+            let file = File::open(&path)
+                .map_err(|e| Error::from(format!("Cannot open file '{}': {}", path, e)))?;
+            Box::new(GzDecoder::new(file))
+        } else {
+            let file = File::open(&path)
+                .map_err(|e| return Error::from(format!("Cannot open file '{}': {}", path, e)))?;
+            Box::new(file)
+        };
         self.reader = Some(FastaSequenceReader {
-            reader: seq_io::fasta::Reader::new(file),
+            reader: seq_io::fasta::Reader::new(reader),
         });
         self.rowid = 0;
         self.done = false;
