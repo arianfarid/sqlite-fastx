@@ -90,5 +90,23 @@ pub fn init(db: &Connection) -> Result<()> {
             ctx.set_result(valid)
         },
     )?;
+    db.create_scalar_function(
+        "min_quality",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let quality = args[0].get_str()?;
+            let valid = min_quality(quality.as_bytes());
+            ctx.set_result(valid)
+        },
+    )?;
+    db.create_scalar_function(
+        "mean_quality",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let quality = args[0].get_str()?;
+            let valid = mean_quality(quality.as_bytes());
+            ctx.set_result(valid)
+        },
+    )?;
     Ok(())
 }

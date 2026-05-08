@@ -75,6 +75,18 @@ pub fn reverse_complement(seq: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+pub fn mean_quality(qual: &[u8]) -> f64 {
+    if qual.is_empty() {
+        return 0.0;
+    }
+    let sum: f64 = qual.iter().map(|&b| (b - 33) as f64).sum();
+    sum / qual.len() as f64
+}
+
+pub fn min_quality(qual: &[u8]) -> i64 {
+    qual.iter().map(|&b| (b - 33) as i64).min().unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,5 +329,68 @@ mod tests {
         assert!(is_valid_rna(b"N"));
         assert!(!is_valid_rna(b"T"));
         assert!(!is_valid_rna(b"Z"));
+    }
+
+    #[test]
+    fn mean_quality_basic() {
+        // All 'I' = ASCII 73, Phred 40
+        assert_eq!(mean_quality(b"IIII"), 40.0);
+    }
+
+    #[test]
+    fn mean_quality_min_score() {
+        // All '!' = ASCII 33, Phred 0
+        assert_eq!(mean_quality(b"!!!!"), 0.0);
+    }
+
+    #[test]
+    fn mean_quality_mixed() {
+        // '!' = Q0, 'I' = Q40, mean = 20.0
+        assert_eq!(mean_quality(b"!I"), 20.0);
+    }
+
+    #[test]
+    fn mean_quality_single_base() {
+        // '5' = ASCII 53, Phred 20
+        assert_eq!(mean_quality(b"5"), 20.0);
+    }
+
+    #[test]
+    fn mean_quality_q30() {
+        // '?' = ASCII 63, Phred 30
+        assert_eq!(mean_quality(b"????"), 30.0);
+    }
+
+    #[test]
+    fn min_quality_basic() {
+        // 'I' = Q40, '!' = Q0
+        assert_eq!(min_quality(b"III!III"), 0);
+    }
+
+    #[test]
+    fn min_quality_all_same() {
+        assert_eq!(min_quality(b"????"), 30);
+    }
+
+    #[test]
+    fn min_quality_single_base() {
+        // '5' = ASCII 53, Phred 20
+        assert_eq!(min_quality(b"5"), 20);
+    }
+
+    #[test]
+    fn min_quality_returns_lowest() {
+        // '+' = ASCII 43, Phred 10 — lowest in mixed string
+        assert_eq!(min_quality(b"IIII+IIII"), 10);
+    }
+
+    #[test]
+    fn mean_quality_empty() {
+        assert_eq!(mean_quality(b""), 0.0);
+    }
+
+    #[test]
+    fn min_quality_empty() {
+        assert_eq!(min_quality(b""), 0);
     }
 }
