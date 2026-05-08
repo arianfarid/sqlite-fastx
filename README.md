@@ -7,8 +7,8 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 ## Features
 
 ### Current
-- Stream FASTA files without loading into memory
-- Query FASTA using SQL
+- Stream FASTA/FASTQ files without loading into memory
+- Query FASTA/FASTQ using SQL
 - Pushdown filtering on sequence, sequence length, and gc content eg (`length > ?` or `sequence LIKE '%ACGT%' or gc_content > 0.6`)
 - Exposed as a SQLite virtual table module
 - Gzip support
@@ -28,7 +28,6 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 
 - Exposed functions: `codon_count`, `has_stop_codon`
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`, 
-- FASTQ support
 - Optional FM-Index for fast substring queries on materialized datasets
 ---
 
