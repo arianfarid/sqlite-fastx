@@ -8,10 +8,10 @@ enum Predicate {
     // TODO: GC, Substring
 }
 impl Predicate {
-    fn matches(&self, record: &RefRecord) -> bool {
+    fn matches<S: SequenceRecord>(&self, record: &S) -> bool {
         match self {
-            Predicate::Length(f) => f.matches(record.seq().len() as i64),
-            Predicate::SequenceLike(s) => s.like(record.seq()),
+            Predicate::Length(f) => f.matches(record.sequence_bytes().len() as i64),
+            Predicate::SequenceLike(s) => s.like(record.sequence_bytes()),
         }
     }
 }
@@ -90,7 +90,7 @@ impl ExecPlan {
     fn new() -> ExecPlan {
         ExecPlan { predicates: vec![] }
     }
-    fn matches(&self, record: &RefRecord) -> bool {
+    fn matches<S: SequenceRecord>(&self, record: &S) -> bool {
         for pred in &self.predicates {
             if !pred.matches(record) {
                 return false;
@@ -100,76 +100,59 @@ impl ExecPlan {
     }
 }
 
-///Cursor for parsing FASTA files.
-struct FastaCursor {
-    plan: ExecPlan,
-    fallback_filename: Option<String>,
-    reader: Option<Reader<File, StdPolicy>>,
-    current: Option<OwnedRecord>,
-    rowid: i64,
-    done: bool,
+trait SequenceRecord: Clone {
+    fn identifier_bytes(&self) -> &[u8];
+    fn description_bytes(&self) -> Option<&[u8]>;
+    fn sequence_bytes(&self) -> &[u8];
 }
-impl FastaCursor {
-    fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result<ExecPlan> {
-        let Some(descriptor) = index_str else {
-            return Ok(ExecPlan { predicates: vec![] });
-        };
+trait SequenceReader {
+    type Record: SequenceRecord;
+    fn next(&mut self) -> Option<Result<Self::Record>>;
+}
 
-        let mut predicates = vec![];
-        for (i, op_str) in descriptor.split(',').enumerate() {
-            if i >= args.len() {
-                break;
-            }
-            let arg = &mut args[i];
-            match op_str {
-                "Gt" => predicates.push(Predicate::Length(LengthFilter {
-                    op: LengthOp::Gt,
-                    value: arg.get_i64(),
-                })),
-                "Ge" => predicates.push(Predicate::Length(LengthFilter {
-                    op: LengthOp::Ge,
-                    value: arg.get_i64(),
-                })),
-                "Lt" => predicates.push(Predicate::Length(LengthFilter {
-                    op: LengthOp::Lt,
-                    value: arg.get_i64(),
-                })),
-                "Le" => predicates.push(Predicate::Length(LengthFilter {
-                    op: LengthOp::Le,
-                    value: arg.get_i64(),
-                })),
-                "Eq" => predicates.push(Predicate::Length(LengthFilter {
-                    op: LengthOp::Eq,
-                    value: arg.get_i64(),
-                })),
-                "Like" => {
-                    let raw = arg.get_str()?.to_string();
-                    let starts_with_wild = raw.starts_with('%');
-                    let ends_with_wild = raw.ends_with('%');
-                    let pattern = raw.trim_matches('%').to_ascii_uppercase();
-                    let op = match (starts_with_wild, ends_with_wild) {
-                        (true, true) => SequenceOp::Contains,
-                        (true, false) => SequenceOp::StartsWith,
-                        (false, true) => SequenceOp::EndsWith,
-                        (false, false) => SequenceOp::Eq,
-                    };
-                    predicates.push(Predicate::SequenceLike(SequenceFilter { op, pattern }))
-                }
-                _ => continue,
-            };
-        }
-        Ok(ExecPlan { predicates })
+struct FastaSequenceReader {
+    reader: Reader<File, StdPolicy>,
+}
+impl SequenceRecord for OwnedRecord {
+    fn identifier_bytes(&self) -> &[u8] {
+        seq_io::fasta::Record::id_bytes(self)
+    }
+
+    fn description_bytes(&self) -> Option<&[u8]> {
+        seq_io::fasta::Record::desc_bytes(self)
+    }
+
+    fn sequence_bytes(&self) -> &[u8] {
+        seq_io::fasta::Record::seq(self)
+    }
+}
+impl SequenceReader for FastaSequenceReader {
+    type Record = OwnedRecord;
+
+    fn next(&mut self) -> Option<Result<Self::Record>> {
+        self.reader.next().map(|r| {
+            r.map(|r| r.to_owned_record())
+                .map_err(|e| sqlite3_ext::Error::from(e.to_string()))
+        })
     }
 }
 
-impl VTabCursor for FastaCursor {
+struct SequenceCursor<R: SequenceReader> {
+    plan: ExecPlan,
+    fallback_filename: Option<String>,
+    reader: Option<R>,
+    current: Option<R::Record>,
+    rowid: i64,
+    done: bool,
+}
+impl VTabCursor for SequenceCursor<FastaSequenceReader> {
     fn filter(
         &mut self,
         _index_num: i32,
         index_str: Option<&str>,
         args: &mut [&mut ValueRef],
     ) -> Result<()> {
-        self.plan = Self::parse_plan(index_str, args)?;
+        self.plan = parse_plan(index_str, args)?;
 
         let path = if let Some(ref f) = self.fallback_filename {
             f.clone()
@@ -180,12 +163,15 @@ impl VTabCursor for FastaCursor {
         let file = File::open(&path)
             .map_err(|e| return Error::from(format!("Cannot open file '{}': {}", path, e)))?;
 
-        self.reader = Some(seq_io::fasta::Reader::new(file));
+        self.reader = Some(FastaSequenceReader {
+            reader: seq_io::fasta::Reader::new(file),
+        });
         self.rowid = 0;
         self.done = false;
         self.current = None;
         self.next()
     }
+
     fn next(&mut self) -> Result<()> {
         let reader = self
             .reader
@@ -195,7 +181,7 @@ impl VTabCursor for FastaCursor {
             match reader.next() {
                 Some(Ok(record)) => {
                     if self.plan.matches(&record) {
-                        self.current = Some(record.to_owned_record());
+                        self.current = Some(record.clone());
                         self.rowid += 1;
                         return Ok(());
                     }
@@ -212,30 +198,89 @@ impl VTabCursor for FastaCursor {
             }
         }
     }
+
     fn eof(&mut self) -> bool {
         self.done
     }
+
     fn column(&mut self, idx: usize, context: &ColumnContext) -> Result<()> {
         if let Some(record) = &self.current {
             match idx {
-                0 => context.set_result(String::from_utf8_lossy(record.id_bytes()).to_string())?,
+                0 => context
+                    .set_result(String::from_utf8_lossy(record.identifier_bytes()).to_string())?,
                 1 => context.set_result(
                     record
-                        .desc_bytes()
+                        .description_bytes()
                         .map(|d| String::from_utf8_lossy(d).to_string())
                         .unwrap_or_default(),
                 )?,
-                2 => context.set_result(String::from_utf8_lossy(&record.seq()).to_string())?,
-                3 => context.set_result(record.seq().len() as i64)?,
+                2 => context
+                    .set_result(String::from_utf8_lossy(&record.sequence_bytes()).to_string())?,
+                3 => context.set_result(record.sequence_bytes().len() as i64)?,
                 _ => {}
             }
         }
         Ok(())
     }
+
     fn rowid(&mut self) -> Result<i64> {
         Ok(self.rowid)
     }
 }
+///Cursor for parsing FASTA files.
+
+type FastaCursor = SequenceCursor<FastaSequenceReader>;
+fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result<ExecPlan> {
+    let Some(descriptor) = index_str else {
+        return Ok(ExecPlan { predicates: vec![] });
+    };
+
+    let mut predicates = vec![];
+    for (i, op_str) in descriptor.split(',').enumerate() {
+        if i >= args.len() {
+            break;
+        }
+        let arg = &mut args[i];
+        match op_str {
+            "Gt" => predicates.push(Predicate::Length(LengthFilter {
+                op: LengthOp::Gt,
+                value: arg.get_i64(),
+            })),
+            "Ge" => predicates.push(Predicate::Length(LengthFilter {
+                op: LengthOp::Ge,
+                value: arg.get_i64(),
+            })),
+            "Lt" => predicates.push(Predicate::Length(LengthFilter {
+                op: LengthOp::Lt,
+                value: arg.get_i64(),
+            })),
+            "Le" => predicates.push(Predicate::Length(LengthFilter {
+                op: LengthOp::Le,
+                value: arg.get_i64(),
+            })),
+            "Eq" => predicates.push(Predicate::Length(LengthFilter {
+                op: LengthOp::Eq,
+                value: arg.get_i64(),
+            })),
+            "Like" => {
+                let raw = arg.get_str()?.to_string();
+                let starts_with_wild = raw.starts_with('%');
+                let ends_with_wild = raw.ends_with('%');
+                let pattern = raw.trim_matches('%').to_ascii_uppercase();
+                let op = match (starts_with_wild, ends_with_wild) {
+                    (true, true) => SequenceOp::Contains,
+                    (true, false) => SequenceOp::StartsWith,
+                    (false, true) => SequenceOp::EndsWith,
+                    (false, false) => SequenceOp::Eq,
+                };
+                predicates.push(Predicate::SequenceLike(SequenceFilter { op, pattern }))
+            }
+            _ => continue,
+        };
+    }
+    Ok(ExecPlan { predicates })
+}
+
 #[sqlite3_ext_vtab(EponymousModule)]
 struct FastaModule {
     filename: Option<String>,
