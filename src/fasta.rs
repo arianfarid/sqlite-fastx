@@ -1,6 +1,7 @@
 use crate::{
     SequenceCursor,
-    filters::{ExecPlan, LengthOp, parse_plan},
+    filters::{CompareOp, ExecPlan, parse_plan},
+    functions::compute_gc,
     reader::{SequenceReader, SequenceRecord},
 };
 use flate2::read::GzDecoder;
@@ -56,6 +57,7 @@ impl VTab<'_> for FastaModule {
                 description TEXT,
                 sequence TEXT,
                 length INTEGER,
+                gc_content REAL,
                 filename TEXT HIDDEN
             )";
         Ok((
@@ -88,6 +90,17 @@ impl VTab<'_> for FastaModule {
                         }
                         _ => {}
                     },
+                    // GC Content
+                    4 => match constraint.op() {
+                        ConstraintOp::GT
+                        | ConstraintOp::GE
+                        | ConstraintOp::LT
+                        | ConstraintOp::LE
+                        | ConstraintOp::Eq => {
+                            usable.push((i, ("gc_content", constraint.op())));
+                        }
+                        _ => {}
+                    },
                     _ => {} // No op
                 }
             }
@@ -102,11 +115,11 @@ impl VTab<'_> for FastaModule {
                     constraints[c.0].set_argv_index(Some(i as u32));
                     constraints[c.0].set_omit(true);
                     let op_str = match c.1.1 {
-                        ConstraintOp::GT => LengthOp::Gt.as_str(),
-                        ConstraintOp::GE => LengthOp::Ge.as_str(),
-                        ConstraintOp::LT => LengthOp::Lt.as_str(),
-                        ConstraintOp::LE => LengthOp::Le.as_str(),
-                        ConstraintOp::Eq => LengthOp::Eq.as_str(),
+                        ConstraintOp::GT => CompareOp::Gt.as_str(),
+                        ConstraintOp::GE => CompareOp::Ge.as_str(),
+                        ConstraintOp::LT => CompareOp::Lt.as_str(),
+                        ConstraintOp::LE => CompareOp::Le.as_str(),
+                        ConstraintOp::Eq => CompareOp::Eq.as_str(),
                         ConstraintOp::Like => "Like",
                         _ => "Scan",
                     };
@@ -209,6 +222,7 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
                 2 => context
                     .set_result(String::from_utf8_lossy(&record.sequence_bytes()).to_string())?,
                 3 => context.set_result(record.sequence_bytes().len() as i64)?,
+                4 => context.set_result(compute_gc(record.sequence_bytes()))?,
                 _ => {}
             }
         }

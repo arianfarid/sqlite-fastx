@@ -9,21 +9,23 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 ### Current
 - Stream FASTA files without loading into memory
 - Query FASTA using SQL
-- Pushdown filtering on sequence length eg (`length > ?` or `sequence LIKE '%ACGT%'`)
+- Pushdown filtering on sequence, sequence length, and gc content eg (`length > ?` or `sequence LIKE '%ACGT%' or gc_content > 0.6`)
 - Exposed as a SQLite virtual table module
 - Gzip support
 
 #### Exposed scalar functions:
 - `gc_content(sequence)` — GC content as a value between 0.0 and 1.0
 - `reverse_complement(sequence)` — reverse complement of a DNA/RNA sequence
-- `to_rna(sequence)` - DNA -> RNA (T->U)
+- `to_rna(sequence)` - RNA -> DNA (T->U)
 - `to_dna(sequence)` - DNA -> RNA (U->T)
 - `is_valid_dna(sequence)` - True if sequence contains only A, G, C, T, or N
 - `is_valid_rna(sequence)` - True if sequence contains only A, G, C, U, or N
+- `n_count(sequence)` — count of ambiguous bases (N)
+- `base_count(sequence, base)` — count occurrences of a specific base
 
 
 ### Planned
-- GC content as derived column + pushdown filtering (`gc_content > 0.6`)
+
 - Exposed functions: `codon_count`, `has_stop_codon`
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`, 
 - FASTQ support
@@ -38,6 +40,7 @@ CREATE TABLE fasta(
     description TEXT,
     sequence TEXT,
     length INTEGER,
+    gc_content REAL,
     filename TEXT HIDDEN
 );
 ```
@@ -115,6 +118,11 @@ Applied during scan rather than post-filtering.
 SELECT gc_content(sequence) from seqs;
 ```
 
+### Gzip Support
+Files ending in `.gz` are automatically decompressed on the fly:
+```sql
+CREATE VIRTUAL TABLE seqs USING fasta('genome.fa.gz');
+```
 
 ### Supported Pushdowns
 
@@ -137,6 +145,15 @@ SELECT gc_content(sequence) from seqs;
 | `sequence LIKE '%pattern'`      | Applied during scan    |
 | `sequence LIKE 'pattern'`     | Applied during scan    |
 
+#### GC Content
+
+| SQL Constraint       | Behavior            |
+|----------------------|---------------------|
+| `gc_content > ?`     | Applied during scan |
+| `gc_content >= ?`    | Applied during scan |
+| `gc_content < ?`     | Applied during scan |
+| `gc_content <= ?`    | Applied during scan |
+| `gc_content = ?`     | Applied during scan |
 
 #### Combining filters
 
@@ -172,14 +189,6 @@ column() → materialize row
 - No caching or dataset reuse
 
 ---
-
-## Dependencies
-
-```toml
-[dependencies]
-seq_io = "*"
-sqlite3_ext = "*"
-```
 
 ## Performance
 

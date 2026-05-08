@@ -1,9 +1,9 @@
 use sqlite3_ext::*;
 
-use crate::reader::SequenceRecord;
+use crate::{functions::compute_gc, reader::SequenceRecord};
 
 #[repr(i32)]
-pub enum LengthOp {
+pub enum CompareOp {
     Gt,
     Ge,
     Lt,
@@ -11,18 +11,47 @@ pub enum LengthOp {
     Eq,
 }
 
-impl LengthOp {
+impl CompareOp {
     pub fn as_str(&self) -> &'static str {
         match self {
-            LengthOp::Gt => "Gt",
-            LengthOp::Ge => "Ge",
-            LengthOp::Lt => "Lt",
-            LengthOp::Le => "Le",
-            LengthOp::Eq => "Eq",
+            CompareOp::Gt => "Gt",
+            CompareOp::Ge => "Ge",
+            CompareOp::Lt => "Lt",
+            CompareOp::Le => "Le",
+            CompareOp::Eq => "Eq",
         }
     }
 }
-
+pub struct LengthFilter {
+    pub op: CompareOp,
+    pub value: i64,
+}
+impl LengthFilter {
+    pub fn matches(&self, len: i64) -> bool {
+        match self.op {
+            CompareOp::Gt => len > self.value,
+            CompareOp::Ge => len >= self.value,
+            CompareOp::Lt => len < self.value,
+            CompareOp::Le => len <= self.value,
+            CompareOp::Eq => len == self.value,
+        }
+    }
+}
+pub struct GCFilter {
+    pub op: CompareOp,
+    pub value: f64,
+}
+impl GCFilter {
+    pub fn matches(&self, gc: f64) -> bool {
+        match self.op {
+            CompareOp::Gt => gc > self.value,
+            CompareOp::Ge => gc >= self.value,
+            CompareOp::Lt => gc < self.value,
+            CompareOp::Le => gc <= self.value,
+            CompareOp::Eq => (gc - self.value).abs() < f64::EPSILON,
+        }
+    }
+}
 pub enum SequenceOp {
     Contains,
     StartsWith,
@@ -38,22 +67,6 @@ impl SequenceOp {
     //         SequenceOp::Eq => "Eq",
     //     }
     // }
-}
-
-pub struct LengthFilter {
-    pub op: LengthOp,
-    pub value: i64,
-}
-impl LengthFilter {
-    pub fn matches(&self, len: i64) -> bool {
-        match self.op {
-            LengthOp::Gt => len > self.value,
-            LengthOp::Ge => len >= self.value,
-            LengthOp::Lt => len < self.value,
-            LengthOp::Le => len <= self.value,
-            LengthOp::Eq => len == self.value,
-        }
-    }
 }
 pub struct SequenceFilter {
     pub op: SequenceOp,
@@ -75,12 +88,14 @@ impl SequenceFilter {
 enum Predicate {
     Length(LengthFilter),
     SequenceLike(SequenceFilter),
-    // TODO: GC, Substring
+    GC(GCFilter),
+    // TODO: Substring
 }
 impl Predicate {
     fn matches<S: SequenceRecord>(&self, record: &S) -> bool {
         match self {
             Predicate::Length(f) => f.matches(record.sequence_bytes().len() as i64),
+            Predicate::GC(f) => f.matches(compute_gc(record.sequence_bytes())),
             Predicate::SequenceLike(s) => s.like(record.sequence_bytes()),
         }
     }
@@ -121,24 +136,44 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
 
         match (col, op) {
             ("length", "Gt") => predicates.push(Predicate::Length(LengthFilter {
-                op: LengthOp::Gt,
+                op: CompareOp::Gt,
                 value: arg.get_i64(),
             })),
             ("length", "Ge") => predicates.push(Predicate::Length(LengthFilter {
-                op: LengthOp::Ge,
+                op: CompareOp::Ge,
                 value: arg.get_i64(),
             })),
             ("length", "Lt") => predicates.push(Predicate::Length(LengthFilter {
-                op: LengthOp::Lt,
+                op: CompareOp::Lt,
                 value: arg.get_i64(),
             })),
             ("length", "Le") => predicates.push(Predicate::Length(LengthFilter {
-                op: LengthOp::Le,
+                op: CompareOp::Le,
                 value: arg.get_i64(),
             })),
             ("length", "Eq") => predicates.push(Predicate::Length(LengthFilter {
-                op: LengthOp::Eq,
+                op: CompareOp::Eq,
                 value: arg.get_i64(),
+            })),
+            ("gc_content", "Gt") => predicates.push(Predicate::GC(GCFilter {
+                op: CompareOp::Gt,
+                value: arg.get_f64(),
+            })),
+            ("gc_content", "Ge") => predicates.push(Predicate::GC(GCFilter {
+                op: CompareOp::Ge,
+                value: arg.get_f64(),
+            })),
+            ("gc_content", "Lt") => predicates.push(Predicate::GC(GCFilter {
+                op: CompareOp::Lt,
+                value: arg.get_f64(),
+            })),
+            ("gc_content", "Le") => predicates.push(Predicate::GC(GCFilter {
+                op: CompareOp::Le,
+                value: arg.get_f64(),
+            })),
+            ("gc_content", "Eq") => predicates.push(Predicate::GC(GCFilter {
+                op: CompareOp::Eq,
+                value: arg.get_f64(),
             })),
             ("sequence", "Like") => {
                 let raw = arg.get_str()?.to_string();
@@ -166,7 +201,7 @@ mod tests {
     #[test]
     fn length_filter_gt() {
         let f = LengthFilter {
-            op: LengthOp::Gt,
+            op: CompareOp::Gt,
             value: 10,
         };
         assert!(f.matches(11));
@@ -177,7 +212,7 @@ mod tests {
     #[test]
     fn length_filter_eq() {
         let f = LengthFilter {
-            op: LengthOp::Eq,
+            op: CompareOp::Eq,
             value: 10,
         };
         assert!(f.matches(10));
@@ -214,5 +249,100 @@ mod tests {
         };
         assert!(f.like(b"GGGGACGT"));
         assert!(!f.like(b"GGACGTGG"));
+    }
+
+    // GC Filter
+    #[test]
+    fn gc_filter_gt() {
+        let f = GCFilter {
+            op: CompareOp::Gt,
+            value: 0.5,
+        };
+        assert!(f.matches(0.6));
+        assert!(!f.matches(0.5));
+        assert!(!f.matches(0.4));
+    }
+
+    #[test]
+    fn gc_filter_ge() {
+        let f = GCFilter {
+            op: CompareOp::Ge,
+            value: 0.5,
+        };
+        assert!(f.matches(0.6));
+        assert!(f.matches(0.5));
+        assert!(!f.matches(0.4));
+    }
+
+    #[test]
+    fn gc_filter_lt() {
+        let f = GCFilter {
+            op: CompareOp::Lt,
+            value: 0.5,
+        };
+        assert!(f.matches(0.4));
+        assert!(!f.matches(0.5));
+        assert!(!f.matches(0.6));
+    }
+
+    #[test]
+    fn gc_filter_le() {
+        let f = GCFilter {
+            op: CompareOp::Le,
+            value: 0.5,
+        };
+        assert!(f.matches(0.4));
+        assert!(f.matches(0.5));
+        assert!(!f.matches(0.6));
+    }
+
+    #[test]
+    fn gc_filter_eq() {
+        let f = GCFilter {
+            op: CompareOp::Eq,
+            value: 0.5,
+        };
+        assert!(f.matches(0.5));
+        assert!(!f.matches(0.5 + f64::EPSILON * 2.0));
+        assert!(!f.matches(0.4));
+    }
+
+    #[test]
+    fn gc_filter_boundaries() {
+        let f = GCFilter {
+            op: CompareOp::Ge,
+            value: 0.0,
+        };
+        assert!(f.matches(0.0));
+        assert!(f.matches(1.0));
+
+        let f = GCFilter {
+            op: CompareOp::Le,
+            value: 1.0,
+        };
+        assert!(f.matches(0.0));
+        assert!(f.matches(1.0));
+    }
+
+    #[test]
+    fn gc_filter_pure_gc() {
+        // 1.0 GC content
+        let f = GCFilter {
+            op: CompareOp::Eq,
+            value: 1.0,
+        };
+        assert!(f.matches(1.0));
+        assert!(!f.matches(0.99));
+    }
+
+    #[test]
+    fn gc_filter_no_gc() {
+        // 0.0 GC content
+        let f = GCFilter {
+            op: CompareOp::Eq,
+            value: 0.0,
+        };
+        assert!(f.matches(0.0));
+        assert!(!f.matches(0.01));
     }
 }
