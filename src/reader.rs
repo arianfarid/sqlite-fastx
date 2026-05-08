@@ -6,6 +6,7 @@ pub trait SequenceRecord: Clone {
     fn identifier_bytes(&self) -> &[u8];
     fn description_bytes(&self) -> Option<&[u8]>;
     fn sequence_bytes(&self) -> &[u8];
+    fn quality_bytes(&self) -> Option<&[u8]>;
 }
 pub trait SequenceReader {
     type Record: SequenceRecord;

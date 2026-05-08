@@ -7,3 +7,5 @@ bench.fa
 test.fa
 testb.db
 .DS_Store
+bench.fastq
+*.fastq

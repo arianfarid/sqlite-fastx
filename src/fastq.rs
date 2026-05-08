@@ -5,14 +5,14 @@ use crate::{
     reader::{SequenceReader, SequenceRecord},
 };
 use flate2::read::GzDecoder;
-use seq_io::{fasta::*, policy::StdPolicy};
+use seq_io::{fastq::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
 use std::{fs::File, io::Read};
 
-pub struct FastaSequenceReader {
+pub struct FastqSequenceReader {
     pub reader: Reader<Box<dyn Read>, StdPolicy>,
 }
-impl SequenceReader for FastaSequenceReader {
+impl SequenceReader for FastqSequenceReader {
     type Record = OwnedRecord;
 
     fn next(&mut self) -> Option<Result<Self::Record>> {
@@ -22,31 +22,32 @@ impl SequenceReader for FastaSequenceReader {
         })
     }
 }
+
 impl SequenceRecord for OwnedRecord {
     fn identifier_bytes(&self) -> &[u8] {
-        seq_io::fasta::Record::id_bytes(self)
+        seq_io::fastq::Record::id_bytes(self)
     }
 
     fn description_bytes(&self) -> Option<&[u8]> {
-        seq_io::fasta::Record::desc_bytes(self)
+        seq_io::fastq::Record::desc_bytes(self)
     }
 
     fn sequence_bytes(&self) -> &[u8] {
-        seq_io::fasta::Record::seq(self)
+        seq_io::fastq::Record::seq(self)
     }
 
     fn quality_bytes(&self) -> Option<&[u8]> {
-        None
+        Some(seq_io::fastq::Record::qual(self))
     }
 }
 
 #[sqlite3_ext_vtab(EponymousModule)]
-pub struct FastaModule {
+pub struct FastqModule {
     filename: Option<String>,
 }
-impl VTab<'_> for FastaModule {
+impl VTab<'_> for FastqModule {
     type Aux = ();
-    type Cursor = FastaCursor;
+    type Cursor = FastqCursor;
     fn connect(_db: &VTabConnection, _aux: &Self::Aux, args: &[&str]) -> Result<(String, Self)> {
         let filename = args
             .get(3)
@@ -62,11 +63,12 @@ impl VTab<'_> for FastaModule {
                 sequence TEXT,
                 length INTEGER,
                 gc_content REAL,
+                quality TEXT,
                 filename TEXT HIDDEN
             )";
         Ok((
             schema.to_owned(),
-            FastaModule {
+            FastqModule {
                 filename: Some(filename),
             },
         ))
@@ -105,6 +107,8 @@ impl VTab<'_> for FastaModule {
                         }
                         _ => {}
                     },
+                    // Quality
+                    // 5 => match
                     _ => {} // No op
                 }
             }
@@ -138,7 +142,7 @@ impl VTab<'_> for FastaModule {
         Ok(())
     }
     fn open(&self) -> Result<Self::Cursor> {
-        Ok(FastaCursor {
+        Ok(FastqCursor {
             plan: ExecPlan::new(),
             fallback_filename: self.filename.clone(),
             reader: None,
@@ -148,7 +152,7 @@ impl VTab<'_> for FastaModule {
         })
     }
 }
-impl VTabCursor for SequenceCursor<FastaSequenceReader> {
+impl VTabCursor for SequenceCursor<FastqSequenceReader> {
     fn filter(
         &mut self,
         _index_num: i32,
@@ -172,8 +176,8 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
                 .map_err(|e| return Error::from(format!("Cannot open file '{}': {}", path, e)))?;
             Box::new(file)
         };
-        self.reader = Some(FastaSequenceReader {
-            reader: seq_io::fasta::Reader::new(reader),
+        self.reader = Some(FastqSequenceReader {
+            reader: seq_io::fastq::Reader::new(reader),
         });
         self.rowid = 0;
         self.done = false;
@@ -227,6 +231,12 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
                     .set_result(String::from_utf8_lossy(&record.sequence_bytes()).to_string())?,
                 3 => context.set_result(record.sequence_bytes().len() as i64)?,
                 4 => context.set_result(compute_gc(record.sequence_bytes()))?,
+                5 => context.set_result(
+                    record
+                        .quality_bytes()
+                        .map(|d| String::from_utf8_lossy(d).to_string())
+                        .unwrap_or_default(),
+                )?,
                 _ => {}
             }
         }
@@ -239,4 +249,4 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
 }
 
 ///Cursor for parsing FASTA files.
-pub type FastaCursor = SequenceCursor<FastaSequenceReader>;
+pub type FastqCursor = SequenceCursor<FastqSequenceReader>;

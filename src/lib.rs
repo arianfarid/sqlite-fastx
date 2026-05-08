@@ -6,10 +6,13 @@ mod reader;
 use reader::*;
 mod fasta;
 use fasta::*;
+mod fastq;
+use fastq::*;
 
 #[sqlite3_ext_main]
 pub fn init(db: &Connection) -> Result<()> {
     db.create_module("fasta", FastaModule::module(), ())?;
+    db.create_module("fastq", FastqModule::module(), ())?;
     db.create_scalar_function(
         "gc_content",
         &FunctionOptions::default().set_n_args(1),
