@@ -27,7 +27,7 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 
 ### Planned
 - Exposed functions: `codon_count`, `has_stop_codon`, `translate(sequence)`, `quality_array(quality)` (decode PHRED scores to an array of integer scores)
-- Aggregate functions: 
+- Aggregate functions: `n50(length)`, `base_composition(sequence)`, `gc_histogram(sequence)`
 - Pushdown filters: `mean_quality/min_quality`, `id` equality, 
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`, 
 - Optional FM-Index for fast substring queries on materialized datasets
