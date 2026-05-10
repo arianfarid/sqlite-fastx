@@ -182,8 +182,8 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
                 let pattern = raw.trim_matches('%').to_ascii_uppercase();
                 let op = match (starts_with_wild, ends_with_wild) {
                     (true, true) => SequenceOp::Contains,
-                    (true, false) => SequenceOp::StartsWith,
-                    (false, true) => SequenceOp::EndsWith,
+                    (true, false) => SequenceOp::EndsWith,
+                    (false, true) => SequenceOp::StartsWith,
                     (false, false) => SequenceOp::Eq,
                 };
                 predicates.push(Predicate::SequenceLike(SequenceFilter { op, pattern }))
