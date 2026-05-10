@@ -9,3 +9,5 @@ testb.db
 .DS_Store
 bench.fastq
 *.fastq
+!tests/fixtures/*.fa
+!tests/fixtures/*.fastq

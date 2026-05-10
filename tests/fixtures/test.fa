@@ -1,0 +1,12 @@
+>seq1 four bases half gc
+ACGT
+>seq2 four adenine no gc
+AAAA
+>seq3 six bases pure gc
+GCGCGC
+>seq4 eight bases starts with acgt
+ACGTTTTT
+>seq5 eight bases ends with acgt
+TTTTACGT
+>seq6 ten thymine no gc
+TTTTTTTTTT

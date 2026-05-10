@@ -1,0 +1,12 @@
+@read1 high quality
+ACGT
++
+IIII
+@read2 low quality
+GGGG
++
+!!!!
+@read3 medium quality
+ACGTTTTT
++
+????????
