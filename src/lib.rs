@@ -108,5 +108,10 @@ pub fn init(db: &Connection) -> Result<()> {
             ctx.set_result(valid)
         },
     )?;
+    db.create_aggregate_function::<(), N50Accumulator>(
+        "n50",
+        &FunctionOptions::default().set_n_args(1),
+        (),
+    )?;
     Ok(())
 }

@@ -25,9 +25,12 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 - `mean_quality(quality)` — mean Phred quality score of a FASTQ quality string
 - `min_quality(quality)` — minimum Phred quality score of a FASTQ quality string
 
+#### Exposed aggregate functions:
+- `n50()` - n50 statistic of a numeric column
+
 ### Planned
 - Exposed functions: `codon_count`, `has_stop_codon`, `translate(sequence)`, `quality_array(quality)` (decode PHRED scores to an array of integer scores)
-- Aggregate functions: `n50(length)`, `base_composition(sequence)`, `gc_histogram(sequence)`
+- Aggregate functions: `base_composition(sequence)`, `gc_histogram(sequence)`
 - Pushdown filters: `mean_quality/min_quality`, `id` equality, 
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`, 
 - Optional FM-Index for fast substring queries on materialized datasets

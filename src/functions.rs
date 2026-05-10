@@ -1,3 +1,10 @@
+// Scalar
+
+use sqlite3_ext::{
+    FromValue,
+    function::{AggregateFunction, FromUserData},
+};
+
 pub fn compute_gc(seq: &[u8]) -> f64 {
     if seq.is_empty() {
         return 0.0;
@@ -85,6 +92,72 @@ pub fn mean_quality(qual: &[u8]) -> f64 {
 
 pub fn min_quality(qual: &[u8]) -> i64 {
     qual.iter().map(|&b| (b - 33) as i64).min().unwrap_or(0)
+}
+
+// Aggregates
+
+pub struct N50Accumulator {
+    lengths: Vec<i64>,
+}
+impl FromUserData<()> for N50Accumulator {
+    fn from_user_data(data: &()) -> Self {
+        N50Accumulator { lengths: vec![] }
+    }
+}
+impl AggregateFunction<()> for N50Accumulator {
+    fn step(
+        &mut self,
+        _context: &sqlite3_ext::function::Context,
+        args: &mut [&mut sqlite3_ext::ValueRef],
+    ) -> sqlite3_ext::Result<()> {
+        let value = args[0].get_i64();
+        self.lengths.push(value);
+        Ok(())
+    }
+
+    fn value(&self, context: &sqlite3_ext::function::Context) -> sqlite3_ext::Result<()> {
+        if self.lengths.is_empty() {
+            return context.set_result(0i64);
+        }
+        let mut sorted = self.lengths.clone();
+        sorted.sort_unstable_by(|a, b| b.cmp(a));
+        let total: i64 = self.lengths.clone().iter().sum();
+        let half = total / 2;
+        let mut running = 0i64;
+        for &len in &sorted {
+            running += len;
+            if running >= half {
+                return context.set_result(len);
+            }
+        }
+        context.set_result(0i64)
+    }
+
+    fn inverse(
+        &mut self,
+        _context: &sqlite3_ext::function::Context,
+        args: &mut [&mut sqlite3_ext::ValueRef],
+    ) -> sqlite3_ext::Result<()> {
+        let value = args[0].get_i64();
+        let pos = self.lengths.iter().position(|&x| x == value);
+        match pos {
+            Some(position) => {
+                self.lengths.remove(position);
+            }
+            None => {}
+        };
+        Ok(())
+    }
+
+    fn default_value(
+        user_data: &(),
+        context: &sqlite3_ext::function::Context,
+    ) -> sqlite3_ext::Result<()>
+    where
+        Self: Sized,
+    {
+        Self::from_user_data(user_data).value(context)
+    }
 }
 
 #[cfg(test)]
