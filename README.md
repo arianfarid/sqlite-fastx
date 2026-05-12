@@ -38,6 +38,7 @@ NucleoDB is a SQLITE virtual table extension for querying FASTA files directly f
 
 ## Table Schema
 
+### FASTA
 ```sql
 CREATE TABLE fasta(
     id TEXT,
@@ -49,11 +50,26 @@ CREATE TABLE fasta(
 );
 ```
 
-- `id`: FASTA record identifier
-- `description`: Optional description line  
-- `sequence`: Full sequence string  
-- `length`: Sequence length  
-- `filename`: Hidden column used internally  
+### FASTQ
+```sql
+CREATE TABLE fastq(
+    id TEXT,
+    description TEXT,
+    sequence TEXT,
+    length INTEGER,
+    gc_content REAL,
+    quality TEXT,
+    filename TEXT HIDDEN
+);
+```
+
+- `id`: Record identifier
+- `description`: Optional description line
+- `sequence`: Full sequence string
+- `length`: Sequence length
+- `gc_content`: GC content as a value between 0.0 and 1.0
+- `quality`: FASTQ quality string (Phred+33 encoded, FASTQ only)
+- `filename`: Hidden column used to specify the file path
 
 ---
 
@@ -166,6 +182,8 @@ Multiple filters are be composed and all records must pass the condition to be r
 ## Architecture
 
 ### Current Flow
+
+The `fasta`/`fastq` modules share the same cursor architecture:
 
 ```
 SQL Query
