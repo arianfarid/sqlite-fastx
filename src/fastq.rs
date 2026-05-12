@@ -41,6 +41,32 @@ impl SequenceRecord for OwnedRecord {
     }
 }
 
+enum Columns {
+    ID,
+    Description,
+    Sequence,
+    Length,
+    GCContent,
+    Quality,
+    Filename,
+}
+impl TryFrom<i32> for Columns {
+    type Error = ();
+
+    fn try_from(value: i32) -> std::result::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Columns::ID),
+            1 => Ok(Columns::Description),
+            2 => Ok(Columns::Sequence),
+            3 => Ok(Columns::Length),
+            4 => Ok(Columns::GCContent),
+            5 => Ok(Columns::Quality),
+            6 => Ok(Columns::Filename),
+            _ => Err(()),
+        }
+    }
+}
+
 #[sqlite3_ext_vtab(EponymousModule)]
 pub struct FastqModule {
     filename: Option<String>,
@@ -77,16 +103,16 @@ impl VTab<'_> for FastqModule {
         let mut usable = vec![];
         for (i, constraint) in index_info.constraints().enumerate() {
             if constraint.usable() {
-                match constraint.column() {
-                    // Sequence
-                    2 => {
+                match Columns::try_from(constraint.column())
+                    .map_err(|_| Error::from("column index out of range"))?
+                {
+                    Columns::Sequence => {
                         match constraint.op() {
                             ConstraintOp::Like => usable.push((i, ("sequence", constraint.op()))),
                             _ => {} //No op
                         }
                     }
-                    // Length
-                    3 => match constraint.op() {
+                    Columns::Length => match constraint.op() {
                         ConstraintOp::GT
                         | ConstraintOp::GE
                         | ConstraintOp::LT
@@ -96,8 +122,7 @@ impl VTab<'_> for FastqModule {
                         }
                         _ => {}
                     },
-                    // GC Content
-                    4 => match constraint.op() {
+                    Columns::GCContent => match constraint.op() {
                         ConstraintOp::GT
                         | ConstraintOp::GE
                         | ConstraintOp::LT
@@ -107,8 +132,6 @@ impl VTab<'_> for FastqModule {
                         }
                         _ => {}
                     },
-                    // Quality
-                    // 5 => match
                     _ => {} // No op
                 }
             }
@@ -218,26 +241,30 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
 
     fn column(&mut self, idx: usize, context: &ColumnContext) -> Result<()> {
         if let Some(record) = &self.current {
-            match idx {
-                0 => context
+            match Columns::try_from(idx as i32)
+                .map_err(|_| Error::from("column index out of range"))?
+            {
+                Columns::ID => context
                     .set_result(String::from_utf8_lossy(record.identifier_bytes()).to_string())?,
-                1 => context.set_result(
+                Columns::Description => context.set_result(
                     record
                         .description_bytes()
                         .map(|d| String::from_utf8_lossy(d).to_string())
                         .unwrap_or_default(),
                 )?,
-                2 => context
+                Columns::Sequence => context
                     .set_result(String::from_utf8_lossy(&record.sequence_bytes()).to_string())?,
-                3 => context.set_result(record.sequence_bytes().len() as i64)?,
-                4 => context.set_result(compute_gc(record.sequence_bytes()))?,
-                5 => context.set_result(
+                Columns::Length => context.set_result(record.sequence_bytes().len() as i64)?,
+                Columns::GCContent => context.set_result(compute_gc(record.sequence_bytes()))?,
+                Columns::Quality => context.set_result(
                     record
                         .quality_bytes()
                         .map(|d| String::from_utf8_lossy(d).to_string())
                         .unwrap_or_default(),
                 )?,
-                _ => {}
+                Columns::Filename => {
+                    context.set_result(self.fallback_filename.clone().unwrap_or_default())?
+                }
             }
         }
         Ok(())
