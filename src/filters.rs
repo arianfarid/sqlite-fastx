@@ -67,9 +67,7 @@ impl TextFilter {
     pub fn like(&self, seq: &[u8]) -> bool {
         let val = seq.to_ascii_uppercase();
         match self.op {
-            SequenceOp::Contains => val
-                .windows(self.pattern.len())
-                .any(|w| w == self.pattern.as_bytes()),
+            SequenceOp::Contains => memchr::memmem::find(&val, self.pattern.as_bytes()).is_some(),
             SequenceOp::StartsWith => val.starts_with(self.pattern.as_bytes()),
             SequenceOp::EndsWith => val.ends_with(self.pattern.as_bytes()),
             SequenceOp::Eq => val == self.pattern.as_bytes(),

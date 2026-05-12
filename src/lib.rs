@@ -1,7 +1,7 @@
 use sqlite3_ext::{function::FunctionOptions, *};
-mod functions;
+pub mod functions;
 use functions::*;
-mod filters;
+pub mod filters;
 mod reader;
 use reader::*;
 mod fasta;

@@ -388,6 +388,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "flate2",
+ "memchr",
  "seq_io",
  "sqlite3_ext",
 ]
