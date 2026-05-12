@@ -19,3 +19,8 @@ crate-type = ["cdylib", "rlib"]
 [[bench]]
 name = "nucleodb_bench"
 harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
