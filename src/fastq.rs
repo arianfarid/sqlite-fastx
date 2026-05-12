@@ -106,6 +106,14 @@ impl VTab<'_> for FastqModule {
                 match Columns::try_from(constraint.column())
                     .map_err(|_| Error::from("column index out of range"))?
                 {
+                    Columns::ID => match constraint.op() {
+                        ConstraintOp::Like => usable.push((i, ("id", constraint.op()))),
+                        _ => {}
+                    },
+                    Columns::Description => match constraint.op() {
+                        ConstraintOp::Like => usable.push((i, ("description", constraint.op()))),
+                        _ => {}
+                    },
                     Columns::Sequence => {
                         match constraint.op() {
                             ConstraintOp::Like => usable.push((i, ("sequence", constraint.op()))),

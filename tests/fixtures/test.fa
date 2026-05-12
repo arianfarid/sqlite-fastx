@@ -10,3 +10,7 @@ ACGTTTTT
 TTTTACGT
 >seq6 ten thymine no gc
 TTTTTTTTTT
+>seq7 lowercase sequence mixed case id
+acgtacgt
+>seq8 has ambiguous bases with n
+ACGNNNTT
