@@ -1,5 +1,5 @@
 [package]
-name = "nucleodb"
+name = "sqlite-fastx"
 version = "0.1.0"
 edition = "2024"
 
@@ -17,7 +17,7 @@ sqlite3_ext = { version = "0.2.0", features = ["static"] }
 crate-type = ["cdylib", "rlib"]
 
 [[bench]]
-name = "nucleodb_bench"
+name = "fastx_bench"
 harness = false
 
 [profile.release]

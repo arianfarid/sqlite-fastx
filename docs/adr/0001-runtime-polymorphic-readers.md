@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-NucleoDB will support reading sequence data from both:
+`sqlite-fastx` will support reading sequence data from both:
 - plain FASTA/Q files
 - gzipped FASTA/Q
 

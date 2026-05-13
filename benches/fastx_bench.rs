@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use nucleodb::filters::{SequenceOp, TextFilter};
-use nucleodb::init;
+use sqlite_fastx::filters::{SequenceOp, TextFilter};
+use sqlite_fastx::init;
 use sqlite3_ext::{Database, FallibleIteratorMut, FromValue};
 use std::hint::black_box;
 
@@ -367,7 +367,7 @@ fn bench_scalar_functions(c: &mut Criterion) {
         ("vlong", vlong.as_slice()),
     ] {
         group.bench_function(format!("{name}"), |b| {
-            b.iter(|| black_box(nucleodb::functions::compute_gc(black_box(seq))))
+            b.iter(|| black_box(sqlite_fastx::functions::compute_gc(black_box(seq))))
         });
     }
     group.finish();
@@ -380,7 +380,7 @@ fn bench_scalar_functions(c: &mut Criterion) {
         ("vlong", vlong.as_slice()),
     ] {
         group.bench_function(format!("{name}"), |b| {
-            b.iter(|| black_box(nucleodb::functions::n_count(black_box(seq))))
+            b.iter(|| black_box(sqlite_fastx::functions::n_count(black_box(seq))))
         });
     }
     group.finish();
@@ -394,7 +394,7 @@ fn bench_scalar_functions(c: &mut Criterion) {
         ("vlong", vlong.as_slice()),
     ] {
         group.bench_function(format!("{name}"), |b| {
-            b.iter(|| black_box(nucleodb::functions::base_count(black_box(seq), b'G')))
+            b.iter(|| black_box(sqlite_fastx::functions::base_count(black_box(seq), b'G')))
         });
     }
     group.finish();

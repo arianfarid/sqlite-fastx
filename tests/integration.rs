@@ -1,4 +1,4 @@
-use nucleodb::init;
+use sqlite_fastx::init;
 use sqlite3_ext::{Database, FallibleIteratorMut, FromValue};
 
 const TEST_FA: &str = "tests/fixtures/test.fa";

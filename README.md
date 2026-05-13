@@ -1,6 +1,6 @@
-# NucleoDB
+# `sqlite-fastx`
 
-NucleoDB is a SQLITE virtual table extension for querying FASTA files directly from disk.
+`sqlite-fastx` is a SQLITE virtual table extension for querying FASTA files directly from disk.
 
 ---
 
@@ -93,9 +93,9 @@ cargo build --release
 
 The compiled SQLite extension will be located at:
 
-- Linux: `target/release/libnucleodb.so`
-- macOS: `target/release/libnucleodb.dylib`
-- Windows: `target/release/nucleodb.dll`
+- Linux: `target/release/libsqlite_fastx.so`
+- macOS: `target/release/libsqlite_fastx.dylib`
+- Windows: `target/release/sqlite_fastx.dll`
 
 ### Load into SQLite CLI
 
@@ -104,7 +104,7 @@ sqlite3
 ```
 
 ```sql
-.load ./target/release/libnucleodb
+.load ./target/release/libsqlite_fastx
 ```
 
 ## Usage
