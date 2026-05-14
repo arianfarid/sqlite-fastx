@@ -11,3 +11,4 @@ bench.fastq
 *.fastq
 !tests/fixtures/*.fa
 !tests/fixtures/*.fastq
+*.fai
