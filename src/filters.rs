@@ -257,8 +257,8 @@ mod tests {
             op: SequenceOp::Contains,
             pattern: "ACGT".to_string(),
         };
-        assert!(f.like(b"GGACGTGG"));
-        assert!(!f.like(b"GGAAGGGG"));
+        assert!(f.eval(b"GGACGTGG"));
+        assert!(!f.eval(b"GGAAGGGG"));
     }
 
     #[test]
@@ -267,8 +267,8 @@ mod tests {
             op: SequenceOp::StartsWith,
             pattern: "ACGT".to_string(),
         };
-        assert!(f.like(b"ACGTGGGG"));
-        assert!(!f.like(b"GGACGTGG"));
+        assert!(f.eval(b"ACGTGGGG"));
+        assert!(!f.eval(b"GGACGTGG"));
     }
 
     #[test]
@@ -277,8 +277,8 @@ mod tests {
             op: SequenceOp::EndsWith,
             pattern: "ACGT".to_string(),
         };
-        assert!(f.like(b"GGGGACGT"));
-        assert!(!f.like(b"GGACGTGG"));
+        assert!(f.eval(b"GGGGACGT"));
+        assert!(!f.eval(b"GGACGTGG"));
     }
 
     #[test]
@@ -287,8 +287,8 @@ mod tests {
             op: SequenceOp::Contains,
             pattern: "ACGT".to_string(),
         };
-        assert!(f.like(b"ggacgtgg"));
-        assert!(f.like(b"ggACGTgg"));
+        assert!(f.eval(b"ggacgtgg"));
+        assert!(f.eval(b"ggACGTgg"));
     }
 
     #[test]
@@ -297,7 +297,7 @@ mod tests {
             op: SequenceOp::StartsWith,
             pattern: "ACGT".to_string(),
         };
-        assert!(f.like(b"acgtgggg"));
+        assert!(f.eval(b"acgtgggg"));
     }
 
     #[test]
@@ -306,7 +306,7 @@ mod tests {
             op: SequenceOp::EndsWith,
             pattern: "ACGT".to_string(),
         };
-        assert!(f.like(b"ggggacgt"));
+        assert!(f.eval(b"ggggacgt"));
     }
 
     #[test]
@@ -315,9 +315,9 @@ mod tests {
             op: SequenceOp::Eq,
             pattern: "ACGT".to_string(),
         };
-        assert!(f.like(b"acgt"));
-        assert!(f.like(b"ACGT"));
-        assert!(f.like(b"AcGt"));
+        assert!(f.eval(b"acgt"));
+        assert!(f.eval(b"ACGT"));
+        assert!(f.eval(b"AcGt"));
     }
 
     // GC Filter
@@ -419,28 +419,28 @@ mod tests {
     #[test]
     fn parse_like_both_wildcards() {
         let (op, pattern) = parse_like_pattern("%ACGT%");
-        assert!(eval!(op, SequenceOp::Contains));
+        assert!(matches!(op, SequenceOp::Contains));
         assert_eq!(pattern, "ACGT");
     }
 
     #[test]
     fn parse_like_leading_wildcard() {
         let (op, pattern) = parse_like_pattern("%ACGT");
-        assert!(eval!(op, SequenceOp::EndsWith));
+        assert!(matches!(op, SequenceOp::EndsWith));
         assert_eq!(pattern, "ACGT");
     }
 
     #[test]
     fn parse_like_trailing_wildcard() {
         let (op, pattern) = parse_like_pattern("ACGT%");
-        assert!(eval!(op, SequenceOp::StartsWith));
+        assert!(matches!(op, SequenceOp::StartsWith));
         assert_eq!(pattern, "ACGT");
     }
 
     #[test]
     fn parse_like_no_wildcard() {
         let (op, pattern) = parse_like_pattern("ACGT");
-        assert!(eval!(op, SequenceOp::Eq));
+        assert!(matches!(op, SequenceOp::Eq));
         assert_eq!(pattern, "ACGT");
     }
 
