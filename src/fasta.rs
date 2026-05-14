@@ -26,6 +26,18 @@ impl SequenceReader for FastaSequenceReader {
                 .map_err(|e| sqlite3_ext::Error::from(e.to_string()))
         })
     }
+
+    fn lookup_offset(fai_path: &str, id: &str) -> Option<u64> {
+        let index = match noodles_fasta::fai::fs::read(fai_path) {
+            Ok(index) => index,
+            Err(_) => return None,
+        };
+        let region = noodles_core::Region::new(id, ..);
+        match index.query(&region) {
+            Ok(offset) => Some(offset),
+            Err(_) => return None,
+        }
+    }
 }
 impl SequenceRecord for OwnedRecord {
     fn identifier_bytes(&self) -> &[u8] {
@@ -192,46 +204,11 @@ impl VTab<'_> for FastaModule {
             current: None,
             rowid: 0,
             done: false,
+            exit_early: false,
         })
     }
 }
-impl SequenceCursor<FastaSequenceReader> {
-    fn determine_strategy(
-        &self,
-        index_str: Option<&str>,
-        args: &mut [&mut ValueRef],
-    ) -> Result<ReadStrategy> {
-        let Some(descriptor) = index_str else {
-            return Ok(ReadStrategy::Stream);
-        };
 
-        let id_arg_idx = descriptor.split(',').position(|t| t == "id:Eq");
-        let Some(idx) = id_arg_idx else {
-            return Ok(ReadStrategy::Stream);
-        };
-        let Some(ref fai_path) = self.fai_path else {
-            return Ok(ReadStrategy::Stream);
-        };
-        let id = args[idx].get_str()?.to_string();
-
-        // Auto-detected FAI — treat as optional optimization.
-        // If unavailable, fall back to full stream silently.
-        let index = match noodles_fasta::fai::fs::read(fai_path) {
-            Ok(index) => index,
-            Err(_) => return Ok(ReadStrategy::Stream),
-        };
-
-        let region = noodles_core::Region::new(id, ..);
-
-        let offset = match index.query(&region) {
-            Ok(offset) => offset,
-            // Tradeoff: potential malformed fai. Treat as full scan.
-            Err(_) => return Ok(ReadStrategy::Stream),
-        };
-
-        Ok(ReadStrategy::SeekToOffset(offset))
-    }
-}
 impl VTabCursor for SequenceCursor<FastaSequenceReader> {
     fn filter(
         &mut self,
@@ -240,7 +217,6 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
         args: &mut [&mut ValueRef],
     ) -> Result<()> {
         let strategy = self.determine_strategy(index_str, args)?;
-
         self.plan = parse_plan(index_str, args)?;
 
         let path = if let Some(ref f) = self.fallback_filename {
@@ -281,6 +257,7 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
         self.rowid = 0;
         self.done = false;
         self.current = None;
+        self.exit_early = false;
         self.next()
     }
 
@@ -290,26 +267,27 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
             .as_mut()
             .ok_or_else(|| "reader not initialized")?;
         loop {
+            if self.exit_early {
+                self.done = true;
+                self.current = None;
+                return Ok(());
+            }
             match reader.next() {
                 Some(Ok(record)) => {
-                    eprintln!(
-                        "read record id: {:?}",
-                        String::from_utf8_lossy(record.id_bytes())
-                    );
-                    eprintln!("plan eval: {}", self.plan.eval(&record));
                     if self.plan.eval(&record) {
                         self.current = Some(record.clone());
                         self.rowid += 1;
+                        if self.plan.unique {
+                            self.exit_early = true;
+                        }
                         return Ok(());
                     }
                 }
-                Some(Err(err)) => {
-                    eprintln!("err record : {:?}", err);
+                Some(Err(_)) => {
                     self.done = true;
                     return Ok(());
                 }
                 None => {
-                    eprintln!("none");
                     self.done = true;
                     self.current = None;
                     return Ok(());

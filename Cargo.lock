@@ -440,6 +440,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "noodles-fastq"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1bd7ca5f1595f089e7373da29fbcda325e05f02ca130424b09e9a877f9de9f9"
+dependencies = [
+ "bstr",
+ "memchr",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -713,6 +723,7 @@ dependencies = [
  "memchr",
  "noodles-core",
  "noodles-fasta",
+ "noodles-fastq",
  "seq_io",
  "sqlite3_ext",
 ]

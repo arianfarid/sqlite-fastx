@@ -111,10 +111,14 @@ impl Predicate {
 
 pub struct ExecPlan {
     predicates: Vec<Predicate>,
+    pub unique: bool,
 }
 impl ExecPlan {
     pub fn new() -> ExecPlan {
-        ExecPlan { predicates: vec![] }
+        ExecPlan {
+            predicates: vec![],
+            unique: false,
+        }
     }
     pub fn eval<S: SequenceRecord>(&self, record: &S) -> bool {
         for pred in &self.predicates {
@@ -128,10 +132,14 @@ impl ExecPlan {
 
 pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result<ExecPlan> {
     let Some(descriptor) = index_str else {
-        return Ok(ExecPlan { predicates: vec![] });
+        return Ok(ExecPlan {
+            predicates: vec![],
+            unique: false,
+        });
     };
 
     let mut predicates = vec![];
+    let mut unique = false;
     for (i, token) in descriptor.split(',').enumerate() {
         if i >= args.len() {
             break;
@@ -185,6 +193,8 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
             })),
             ("id", "Eq") => {
                 let raw = arg.get_str()?.to_string();
+                // Per fasta rules, id = 'some_id' must be unique
+                unique = true;
                 predicates.push(Predicate::IDEq(EqFilter {
                     op: SequenceOp::Eq,
                     pattern: raw,
@@ -208,7 +218,7 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
             _ => continue,
         };
     }
-    Ok(ExecPlan { predicates })
+    Ok(ExecPlan { predicates, unique })
 }
 
 fn parse_like_pattern(raw: &str) -> (SequenceOp, String) {

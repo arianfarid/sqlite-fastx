@@ -1,13 +1,17 @@
 use crate::{
     SequenceCursor,
+    fai::find_record_offset,
     filters::{CompareOp, ExecPlan, parse_plan},
     functions::compute_gc,
-    reader::{SequenceReader, SequenceRecord},
+    reader::{ReadStrategy, SequenceReader, SequenceRecord},
 };
 use flate2::read::GzDecoder;
 use seq_io::{fastq::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
-use std::{fs::File, io::Read};
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+};
 
 pub struct FastqSequenceReader {
     pub reader: Reader<Box<dyn Read>, StdPolicy>,
@@ -21,6 +25,9 @@ impl SequenceReader for FastqSequenceReader {
                 .map_err(|e| sqlite3_ext::Error::from(e.to_string()))
         })
     }
+
+    // TODO: Add fastq fai support
+    // fn lookup_offset(fai_path: &str, id: &str) -> Option<u64> {}
 }
 
 impl SequenceRecord for OwnedRecord {
@@ -70,6 +77,7 @@ impl TryFrom<i32> for Columns {
 #[sqlite3_ext_vtab(EponymousModule)]
 pub struct FastqModule {
     filename: Option<String>,
+    fai_path: Option<String>,
 }
 impl VTab<'_> for FastqModule {
     type Aux = ();
@@ -92,10 +100,17 @@ impl VTab<'_> for FastqModule {
                 quality TEXT,
                 filename TEXT HIDDEN
             )";
+        let fai_path = format!("{}.fai", filename);
+        let fai_path = if std::path::Path::new(&fai_path).exists() {
+            Some(fai_path)
+        } else {
+            None
+        };
         Ok((
             schema.to_owned(),
             FastqModule {
                 filename: Some(filename),
+                fai_path: fai_path,
             },
         ))
     }
@@ -176,11 +191,12 @@ impl VTab<'_> for FastqModule {
         Ok(FastqCursor {
             plan: ExecPlan::new(),
             fallback_filename: self.filename.clone(),
-            fai_path: self.filename.clone(),
+            fai_path: self.fai_path.clone(),
             reader: None,
             current: None,
             rowid: 0,
             done: false,
+            exit_early: false,
         })
     }
 }
@@ -191,6 +207,7 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
         index_str: Option<&str>,
         args: &mut [&mut ValueRef],
     ) -> Result<()> {
+        let strategy = self.determine_strategy(index_str, args)?;
         self.plan = parse_plan(index_str, args)?;
 
         let path = if let Some(ref f) = self.fallback_filename {
@@ -199,14 +216,30 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
             return Err("filename constraint required".into());
         };
 
-        let reader: Box<dyn Read> = if path.ends_with(".gz") {
-            let file = File::open(&path)
-                .map_err(|e| Error::from(format!("Cannot open file '{}': {}", path, e)))?;
-            Box::new(GzDecoder::new(file))
-        } else {
-            let file = File::open(&path)
-                .map_err(|e| return Error::from(format!("Cannot open file '{}': {}", path, e)))?;
-            Box::new(file)
+        let reader: Box<dyn Read> = match strategy {
+            ReadStrategy::Stream => {
+                if path.ends_with(".gz") {
+                    let file = File::open(&path)
+                        .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
+                    Box::new(GzDecoder::new(file))
+                } else {
+                    let file = File::open(&path)
+                        .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
+                    Box::new(file)
+                }
+            }
+            ReadStrategy::SeekToOffset(offset) => {
+                let mut file = File::open(&path)
+                    .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
+
+                let record_offset =
+                    find_record_offset(&mut file, offset).map_err(|e| Error::from(e))?;
+
+                file.seek(SeekFrom::Start(record_offset))
+                    .map_err(|e| Error::from(format!("Seek failed: {}", e)))?;
+
+                Box::new(file)
+            }
         };
         self.reader = Some(FastqSequenceReader {
             reader: seq_io::fastq::Reader::new(reader),
@@ -223,11 +256,19 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
             .as_mut()
             .ok_or_else(|| "reader not initialized")?;
         loop {
+            if self.exit_early {
+                self.done = true;
+                self.current = None;
+                return Ok(());
+            }
             match reader.next() {
                 Some(Ok(record)) => {
                     if self.plan.eval(&record) {
                         self.current = Some(record.clone());
                         self.rowid += 1;
+                        if self.plan.unique {
+                            self.exit_early = true;
+                        }
                         return Ok(());
                     }
                 }

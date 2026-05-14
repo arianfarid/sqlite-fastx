@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::{collections::HashMap, io::Read};
 
+// Currently a stub for a custom fai parser, if necessary
 pub struct FaiRecord {
     name: String,
     length: u64,
@@ -11,7 +12,6 @@ pub struct FaiRecord {
     // // Byte offset of the ID (name) delimiter (e.g. `>` for fasta  or `@` for fastq)
     // record_offset: u64,
 }
-
 pub struct IndexFai {
     records: HashMap<String, FaiRecord>,
 }
@@ -25,7 +25,7 @@ impl IndexFai {
             }
             let cols: Vec<&str> = line.split('\t').collect();
             // Todo fastq = 6
-            if cols.len() < 5 {
+            if cols.len() >= 5 {
                 let rec = FaiRecord {
                     name: cols[0].to_string(),
                     length: cols[1].parse::<u64>().map_err(|_| "Invalid length")?,
