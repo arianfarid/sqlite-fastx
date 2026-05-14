@@ -176,6 +176,7 @@ impl VTab<'_> for FastqModule {
         Ok(FastqCursor {
             plan: ExecPlan::new(),
             fallback_filename: self.filename.clone(),
+            fai_path: self.filename.clone(),
             reader: None,
             current: None,
             rowid: 0,
@@ -224,7 +225,7 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
         loop {
             match reader.next() {
                 Some(Ok(record)) => {
-                    if self.plan.matches(&record) {
+                    if self.plan.eval(&record) {
                         self.current = Some(record.clone());
                         self.rowid += 1;
                         return Ok(());

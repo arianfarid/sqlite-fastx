@@ -1,17 +1,22 @@
 use crate::{
     SequenceCursor,
+    fai::find_record_offset,
     filters::{CompareOp, ExecPlan, parse_plan},
     functions::compute_gc,
-    reader::{SequenceReader, SequenceRecord},
+    reader::{ReadStrategy, SequenceReader, SequenceRecord},
 };
 use flate2::read::GzDecoder;
 use seq_io::{fasta::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
-use std::{fs::File, io::Read};
+use std::{
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+};
 
 pub struct FastaSequenceReader {
     pub reader: Reader<Box<dyn Read>, StdPolicy>,
 }
+
 impl SequenceReader for FastaSequenceReader {
     type Record = OwnedRecord;
 
@@ -67,6 +72,7 @@ impl TryFrom<i32> for Columns {
 #[sqlite3_ext_vtab(EponymousModule)]
 pub struct FastaModule {
     filename: Option<String>,
+    fai_path: Option<String>,
 }
 impl VTab<'_> for FastaModule {
     type Aux = ();
@@ -88,10 +94,18 @@ impl VTab<'_> for FastaModule {
                 gc_content REAL,
                 filename TEXT HIDDEN
             )";
+
+        let fai_path = format!("{}.fai", filename);
+        let fai_path = if std::path::Path::new(&fai_path).exists() {
+            Some(fai_path)
+        } else {
+            None
+        };
         Ok((
             schema.to_owned(),
             FastaModule {
                 filename: Some(filename),
+                fai_path,
             },
         ))
     }
@@ -104,6 +118,7 @@ impl VTab<'_> for FastaModule {
                 {
                     Columns::ID => match constraint.op() {
                         ConstraintOp::Like => usable.push((i, ("id", constraint.op()))),
+                        ConstraintOp::Eq => usable.push((i, ("id", constraint.op()))),
                         _ => {}
                     },
                     Columns::Description => match constraint.op() {
@@ -172,11 +187,49 @@ impl VTab<'_> for FastaModule {
         Ok(FastaCursor {
             plan: ExecPlan::new(),
             fallback_filename: self.filename.clone(),
+            fai_path: self.fai_path.clone(),
             reader: None,
             current: None,
             rowid: 0,
             done: false,
         })
+    }
+}
+impl SequenceCursor<FastaSequenceReader> {
+    fn determine_strategy(
+        &self,
+        index_str: Option<&str>,
+        args: &mut [&mut ValueRef],
+    ) -> Result<ReadStrategy> {
+        let Some(descriptor) = index_str else {
+            return Ok(ReadStrategy::Stream);
+        };
+
+        let id_arg_idx = descriptor.split(',').position(|t| t == "id:Eq");
+        let Some(idx) = id_arg_idx else {
+            return Ok(ReadStrategy::Stream);
+        };
+        let Some(ref fai_path) = self.fai_path else {
+            return Ok(ReadStrategy::Stream);
+        };
+        let id = args[idx].get_str()?.to_string();
+
+        // Auto-detected FAI — treat as optional optimization.
+        // If unavailable, fall back to full stream silently.
+        let index = match noodles_fasta::fai::fs::read(fai_path) {
+            Ok(index) => index,
+            Err(_) => return Ok(ReadStrategy::Stream),
+        };
+
+        let region = noodles_core::Region::new(id, ..);
+
+        let offset = match index.query(&region) {
+            Ok(offset) => offset,
+            // Tradeoff: potential malformed fai. Treat as full scan.
+            Err(_) => return Ok(ReadStrategy::Stream),
+        };
+
+        Ok(ReadStrategy::SeekToOffset(offset))
     }
 }
 impl VTabCursor for SequenceCursor<FastaSequenceReader> {
@@ -186,6 +239,8 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
         index_str: Option<&str>,
         args: &mut [&mut ValueRef],
     ) -> Result<()> {
+        let strategy = self.determine_strategy(index_str, args)?;
+
         self.plan = parse_plan(index_str, args)?;
 
         let path = if let Some(ref f) = self.fallback_filename {
@@ -194,15 +249,32 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
             return Err("filename constraint required".into());
         };
 
-        let reader: Box<dyn Read> = if path.ends_with(".gz") {
-            let file = File::open(&path)
-                .map_err(|e| Error::from(format!("Cannot open file '{}': {}", path, e)))?;
-            Box::new(GzDecoder::new(file))
-        } else {
-            let file = File::open(&path)
-                .map_err(|e| return Error::from(format!("Cannot open file '{}': {}", path, e)))?;
-            Box::new(file)
+        let reader: Box<dyn Read> = match strategy {
+            ReadStrategy::Stream => {
+                if path.ends_with(".gz") {
+                    let file = File::open(&path)
+                        .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
+                    Box::new(GzDecoder::new(file))
+                } else {
+                    let file = File::open(&path)
+                        .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
+                    Box::new(file)
+                }
+            }
+            ReadStrategy::SeekToOffset(offset) => {
+                let mut file = File::open(&path)
+                    .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
+
+                let record_offset =
+                    find_record_offset(&mut file, offset).map_err(|e| Error::from(e))?;
+
+                file.seek(SeekFrom::Start(record_offset))
+                    .map_err(|e| Error::from(format!("Seek failed: {}", e)))?;
+
+                Box::new(file)
+            }
         };
+
         self.reader = Some(FastaSequenceReader {
             reader: seq_io::fasta::Reader::new(reader),
         });
@@ -220,17 +292,24 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
         loop {
             match reader.next() {
                 Some(Ok(record)) => {
-                    if self.plan.matches(&record) {
+                    eprintln!(
+                        "read record id: {:?}",
+                        String::from_utf8_lossy(record.id_bytes())
+                    );
+                    eprintln!("plan eval: {}", self.plan.eval(&record));
+                    if self.plan.eval(&record) {
                         self.current = Some(record.clone());
                         self.rowid += 1;
                         return Ok(());
                     }
                 }
-                Some(Err(_)) => {
+                Some(Err(err)) => {
+                    eprintln!("err record : {:?}", err);
                     self.done = true;
                     return Ok(());
                 }
                 None => {
+                    eprintln!("none");
                     self.done = true;
                     self.current = None;
                     return Ok(());

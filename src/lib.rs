@@ -8,6 +8,8 @@ mod fasta;
 use fasta::*;
 mod fastq;
 use fastq::*;
+pub mod fai;
+use fai::*;
 
 #[sqlite3_ext_main]
 pub fn init(db: &Connection) -> Result<()> {

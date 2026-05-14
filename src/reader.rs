@@ -16,8 +16,14 @@ pub trait SequenceReader {
 pub struct SequenceCursor<R: SequenceReader> {
     pub plan: ExecPlan,
     pub fallback_filename: Option<String>,
+    pub fai_path: Option<String>,
     pub reader: Option<R>,
     pub current: Option<R::Record>,
     pub rowid: i64,
     pub done: bool,
+}
+
+pub enum ReadStrategy {
+    Stream,
+    SeekToOffset(u64),
 }

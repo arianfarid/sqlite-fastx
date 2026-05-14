@@ -27,7 +27,7 @@ pub struct LengthFilter {
     pub value: i64,
 }
 impl LengthFilter {
-    pub fn matches(&self, len: i64) -> bool {
+    pub fn eval(&self, len: i64) -> bool {
         match self.op {
             CompareOp::Gt => len > self.value,
             CompareOp::Ge => len >= self.value,
@@ -42,7 +42,7 @@ pub struct GCFilter {
     pub value: f64,
 }
 impl GCFilter {
-    pub fn matches(&self, gc: f64) -> bool {
+    pub fn eval(&self, gc: f64) -> bool {
         match self.op {
             CompareOp::Gt => gc > self.value,
             CompareOp::Ge => gc >= self.value,
@@ -59,12 +59,21 @@ pub enum SequenceOp {
     Eq,
 }
 
-pub struct TextFilter {
+pub struct EqFilter {
     pub op: SequenceOp,
     pub pattern: String,
 }
-impl TextFilter {
-    pub fn like(&self, seq: &[u8]) -> bool {
+impl EqFilter {
+    pub fn eval(&self, val: &[u8]) -> bool {
+        val == self.pattern.as_bytes()
+    }
+}
+pub struct LikeFilter {
+    pub op: SequenceOp,
+    pub pattern: String,
+}
+impl LikeFilter {
+    pub fn eval(&self, seq: &[u8]) -> bool {
         let val = seq.to_ascii_uppercase();
         match self.op {
             SequenceOp::Contains => memchr::memmem::find(&val, self.pattern.as_bytes()).is_some(),
@@ -76,24 +85,26 @@ impl TextFilter {
 }
 
 enum Predicate {
-    ID(TextFilter),
-    Description(TextFilter),
+    IDLike(LikeFilter),
+    IDEq(EqFilter),
+    Description(LikeFilter),
     Length(LengthFilter),
-    Sequence(TextFilter),
+    Sequence(LikeFilter),
     GC(GCFilter),
     // TODO: Substring
 }
 impl Predicate {
-    fn matches<S: SequenceRecord>(&self, record: &S) -> bool {
+    fn eval<S: SequenceRecord>(&self, record: &S) -> bool {
         match self {
-            Predicate::ID(f) => f.like(record.identifier_bytes()),
+            Predicate::IDEq(f) => f.eval(record.identifier_bytes()),
+            Predicate::IDLike(f) => f.eval(record.identifier_bytes()),
             Predicate::Description(f) => record
                 .description_bytes()
-                .map(|d| f.like(d))
+                .map(|d| f.eval(d))
                 .unwrap_or(false),
-            Predicate::Length(f) => f.matches(record.sequence_bytes().len() as i64),
-            Predicate::GC(f) => f.matches(compute_gc(record.sequence_bytes())),
-            Predicate::Sequence(s) => s.like(record.sequence_bytes()),
+            Predicate::Length(f) => f.eval(record.sequence_bytes().len() as i64),
+            Predicate::GC(f) => f.eval(compute_gc(record.sequence_bytes())),
+            Predicate::Sequence(s) => s.eval(record.sequence_bytes()),
         }
     }
 }
@@ -105,9 +116,9 @@ impl ExecPlan {
     pub fn new() -> ExecPlan {
         ExecPlan { predicates: vec![] }
     }
-    pub fn matches<S: SequenceRecord>(&self, record: &S) -> bool {
+    pub fn eval<S: SequenceRecord>(&self, record: &S) -> bool {
         for pred in &self.predicates {
-            if !pred.matches(record) {
+            if !pred.eval(record) {
                 return false;
             }
         }
@@ -172,20 +183,27 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
                 op: CompareOp::Eq,
                 value: arg.get_f64(),
             })),
+            ("id", "Eq") => {
+                let raw = arg.get_str()?.to_string();
+                predicates.push(Predicate::IDEq(EqFilter {
+                    op: SequenceOp::Eq,
+                    pattern: raw,
+                }))
+            }
             ("id", "Like") => {
                 let raw = arg.get_str()?.to_string();
                 let (op, pattern) = parse_like_pattern(&raw);
-                predicates.push(Predicate::ID(TextFilter { op, pattern }))
+                predicates.push(Predicate::IDLike(LikeFilter { op, pattern }))
             }
             ("description", "Like") => {
                 let raw = arg.get_str()?.to_string();
                 let (op, pattern) = parse_like_pattern(&raw);
-                predicates.push(Predicate::Description(TextFilter { op, pattern }))
+                predicates.push(Predicate::Description(LikeFilter { op, pattern }))
             }
             ("sequence", "Like") => {
                 let raw = arg.get_str()?.to_string();
                 let (op, pattern) = parse_like_pattern(&raw);
-                predicates.push(Predicate::Sequence(TextFilter { op, pattern }))
+                predicates.push(Predicate::Sequence(LikeFilter { op, pattern }))
             }
             _ => continue,
         };
@@ -216,9 +234,9 @@ mod tests {
             op: CompareOp::Gt,
             value: 10,
         };
-        assert!(f.matches(11));
-        assert!(!f.matches(10));
-        assert!(!f.matches(9));
+        assert!(f.eval(11));
+        assert!(!f.eval(10));
+        assert!(!f.eval(9));
     }
 
     #[test]
@@ -227,15 +245,15 @@ mod tests {
             op: CompareOp::Eq,
             value: 10,
         };
-        assert!(f.matches(10));
-        assert!(!f.matches(11));
-        assert!(!f.matches(9));
+        assert!(f.eval(10));
+        assert!(!f.eval(11));
+        assert!(!f.eval(9));
     }
 
-    // TextFilter tests
+    // LikeFilter tests
     #[test]
-    fn text_filter_contains() {
-        let f = TextFilter {
+    fn like_filter_contains() {
+        let f = LikeFilter {
             op: SequenceOp::Contains,
             pattern: "ACGT".to_string(),
         };
@@ -244,8 +262,8 @@ mod tests {
     }
 
     #[test]
-    fn text_filter_starts_with() {
-        let f = TextFilter {
+    fn like_filter_starts_with() {
+        let f = LikeFilter {
             op: SequenceOp::StartsWith,
             pattern: "ACGT".to_string(),
         };
@@ -254,8 +272,8 @@ mod tests {
     }
 
     #[test]
-    fn text_filter_ends_with() {
-        let f = TextFilter {
+    fn like_filter_ends_with() {
+        let f = LikeFilter {
             op: SequenceOp::EndsWith,
             pattern: "ACGT".to_string(),
         };
@@ -264,8 +282,8 @@ mod tests {
     }
 
     #[test]
-    fn text_filter_case_insensitive_contains() {
-        let f = TextFilter {
+    fn like_filter_case_insensitive_contains() {
+        let f = LikeFilter {
             op: SequenceOp::Contains,
             pattern: "ACGT".to_string(),
         };
@@ -274,8 +292,8 @@ mod tests {
     }
 
     #[test]
-    fn text_filter_case_insensitive_starts_with() {
-        let f = TextFilter {
+    fn like_filter_case_insensitive_starts_with() {
+        let f = LikeFilter {
             op: SequenceOp::StartsWith,
             pattern: "ACGT".to_string(),
         };
@@ -283,8 +301,8 @@ mod tests {
     }
 
     #[test]
-    fn text_filter_case_insensitive_ends_with() {
-        let f = TextFilter {
+    fn like_filter_case_insensitive_ends_with() {
+        let f = LikeFilter {
             op: SequenceOp::EndsWith,
             pattern: "ACGT".to_string(),
         };
@@ -292,8 +310,8 @@ mod tests {
     }
 
     #[test]
-    fn text_filter_case_insensitive_eq() {
-        let f = TextFilter {
+    fn like_filter_case_insensitive_eq() {
+        let f = LikeFilter {
             op: SequenceOp::Eq,
             pattern: "ACGT".to_string(),
         };
@@ -309,9 +327,9 @@ mod tests {
             op: CompareOp::Gt,
             value: 0.5,
         };
-        assert!(f.matches(0.6));
-        assert!(!f.matches(0.5));
-        assert!(!f.matches(0.4));
+        assert!(f.eval(0.6));
+        assert!(!f.eval(0.5));
+        assert!(!f.eval(0.4));
     }
 
     #[test]
@@ -320,9 +338,9 @@ mod tests {
             op: CompareOp::Ge,
             value: 0.5,
         };
-        assert!(f.matches(0.6));
-        assert!(f.matches(0.5));
-        assert!(!f.matches(0.4));
+        assert!(f.eval(0.6));
+        assert!(f.eval(0.5));
+        assert!(!f.eval(0.4));
     }
 
     #[test]
@@ -331,9 +349,9 @@ mod tests {
             op: CompareOp::Lt,
             value: 0.5,
         };
-        assert!(f.matches(0.4));
-        assert!(!f.matches(0.5));
-        assert!(!f.matches(0.6));
+        assert!(f.eval(0.4));
+        assert!(!f.eval(0.5));
+        assert!(!f.eval(0.6));
     }
 
     #[test]
@@ -342,9 +360,9 @@ mod tests {
             op: CompareOp::Le,
             value: 0.5,
         };
-        assert!(f.matches(0.4));
-        assert!(f.matches(0.5));
-        assert!(!f.matches(0.6));
+        assert!(f.eval(0.4));
+        assert!(f.eval(0.5));
+        assert!(!f.eval(0.6));
     }
 
     #[test]
@@ -353,9 +371,9 @@ mod tests {
             op: CompareOp::Eq,
             value: 0.5,
         };
-        assert!(f.matches(0.5));
-        assert!(!f.matches(0.5 + f64::EPSILON * 2.0));
-        assert!(!f.matches(0.4));
+        assert!(f.eval(0.5));
+        assert!(!f.eval(0.5 + f64::EPSILON * 2.0));
+        assert!(!f.eval(0.4));
     }
 
     #[test]
@@ -364,15 +382,15 @@ mod tests {
             op: CompareOp::Ge,
             value: 0.0,
         };
-        assert!(f.matches(0.0));
-        assert!(f.matches(1.0));
+        assert!(f.eval(0.0));
+        assert!(f.eval(1.0));
 
         let f = GCFilter {
             op: CompareOp::Le,
             value: 1.0,
         };
-        assert!(f.matches(0.0));
-        assert!(f.matches(1.0));
+        assert!(f.eval(0.0));
+        assert!(f.eval(1.0));
     }
 
     #[test]
@@ -382,8 +400,8 @@ mod tests {
             op: CompareOp::Eq,
             value: 1.0,
         };
-        assert!(f.matches(1.0));
-        assert!(!f.matches(0.99));
+        assert!(f.eval(1.0));
+        assert!(!f.eval(0.99));
     }
 
     #[test]
@@ -393,36 +411,36 @@ mod tests {
             op: CompareOp::Eq,
             value: 0.0,
         };
-        assert!(f.matches(0.0));
-        assert!(!f.matches(0.01));
+        assert!(f.eval(0.0));
+        assert!(!f.eval(0.01));
     }
 
     // parse_like_pattern
     #[test]
     fn parse_like_both_wildcards() {
         let (op, pattern) = parse_like_pattern("%ACGT%");
-        assert!(matches!(op, SequenceOp::Contains));
+        assert!(eval!(op, SequenceOp::Contains));
         assert_eq!(pattern, "ACGT");
     }
 
     #[test]
     fn parse_like_leading_wildcard() {
         let (op, pattern) = parse_like_pattern("%ACGT");
-        assert!(matches!(op, SequenceOp::EndsWith));
+        assert!(eval!(op, SequenceOp::EndsWith));
         assert_eq!(pattern, "ACGT");
     }
 
     #[test]
     fn parse_like_trailing_wildcard() {
         let (op, pattern) = parse_like_pattern("ACGT%");
-        assert!(matches!(op, SequenceOp::StartsWith));
+        assert!(eval!(op, SequenceOp::StartsWith));
         assert_eq!(pattern, "ACGT");
     }
 
     #[test]
     fn parse_like_no_wildcard() {
         let (op, pattern) = parse_like_pattern("ACGT");
-        assert!(matches!(op, SequenceOp::Eq));
+        assert!(eval!(op, SequenceOp::Eq));
         assert_eq!(pattern, "ACGT");
     }
 
