@@ -237,8 +237,9 @@ Benchmarked on an Apple M2 (24GB).
 | Query                                           | Pushdown | No Pushdown | Speedup |
 |-------------------------------------------------|----------|-------------|---------|
 | `WHERE length > 100 AND length < 200`           | 0.64 ms  | 1.79 ms     | 2.7×    |
-| `WHERE sequence LIKE '%ACGT%'`                  | 4.71 ms  | 13.24 ms    | 2.8×    |
-| `WHERE length > 100 AND sequence LIKE '%ACGT%'` | 4.46 ms  | 12.39 ms    | 2.8×    |
+| `WHERE sequence LIKE '%ACGT%'`                  | 1.81 ms  | 9.31 ms     | 5.1×    |
+| `WHERE length > 100 AND sequence LIKE '%ACGT%'` | 1.77 ms  | 9.12 ms     | 5.2×    |
+
 
 ### FAI index — 20 sequences (100k–500k bp, ~6.4 MB)
 
