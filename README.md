@@ -230,10 +230,19 @@ column() → materialize row
 
 ## Performance
 
-Benchmarked on an Apple M2 (24GB) with 10,000 sequences (50–500 bases each):
+Benchmarked on an Apple M2 (24GB).
 
-| Query                             | Pushdown | No Pushdown | Speedup |
-|-----------------------------------|----------|-------------|---------|
-| `WHERE length > 100 AND length < 200` | 0.64 ms  | 1.79 ms  | 2.7x    |
-| `WHERE sequence LIKE '%ACGT%'`        | 4.71 ms  | 13.24 ms | 2.8x    |
-| `WHERE length > 100 AND sequence LIKE '%ACGT%'` | 4.46 ms | 12.39 ms | 2.8x |
+### Pushdown filters — 10k sequences (50–500 bp)
+
+| Query                                           | Pushdown | No Pushdown | Speedup |
+|-------------------------------------------------|----------|-------------|---------|
+| `WHERE length > 100 AND length < 200`           | 0.64 ms  | 1.79 ms     | 2.7×    |
+| `WHERE sequence LIKE '%ACGT%'`                  | 4.71 ms  | 13.24 ms    | 2.8×    |
+| `WHERE length > 100 AND sequence LIKE '%ACGT%'` | 4.46 ms  | 12.39 ms    | 2.8×    |
+
+### FAI index — 20 sequences (100k–500k bp, ~6.4 MB)
+
+| Query                    | With FAI | No FAI   | Speedup |
+|--------------------------|----------|----------|---------|
+| `WHERE id = 'seq10'` (middle) | 81 µs  | 368 µs | 4.5×    |
+| `WHERE id = 'seq19'` (last)   | 82 µs  | 601 µs | 7.3×    |
