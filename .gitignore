@@ -5,6 +5,8 @@ TESTING.md
 bench.fa
 bench_wide.fa
 bench_wide_nofai.fa
+bench_reads.fa
+bench_reads_nofai.fa
 *.fa.gz
 test.fa
 testb.db
