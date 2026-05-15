@@ -2,7 +2,7 @@ use crate::{
     SequenceCursor,
     fai::find_record_offset,
     filters::{CompareOp, ExecPlan, parse_plan},
-    functions::compute_gc,
+    functions::{compute_gc, mean_quality, min_quality},
     reader::{ReadStrategy, SequenceReader, SequenceRecord},
 };
 use flate2::read::GzDecoder;
@@ -55,6 +55,8 @@ enum Columns {
     Length,
     GCContent,
     Quality,
+    MeanQuality,
+    MinQuality,
     Filename,
 }
 impl TryFrom<i32> for Columns {
@@ -68,7 +70,9 @@ impl TryFrom<i32> for Columns {
             3 => Ok(Columns::Length),
             4 => Ok(Columns::GCContent),
             5 => Ok(Columns::Quality),
-            6 => Ok(Columns::Filename),
+            6 => Ok(Columns::MeanQuality),
+            7 => Ok(Columns::MinQuality),
+            8 => Ok(Columns::Filename),
             _ => Err(()),
         }
     }
@@ -98,6 +102,8 @@ impl VTab<'_> for FastqModule {
                 length INTEGER,
                 gc_content REAL,
                 quality TEXT,
+                mean_quality REAL,
+                min_quality INTEGER,
                 filename TEXT HIDDEN
             )";
         let fai_path = format!("{}.fai", filename);
@@ -152,6 +158,26 @@ impl VTab<'_> for FastqModule {
                         | ConstraintOp::LE
                         | ConstraintOp::Eq => {
                             usable.push((i, ("gc_content", constraint.op())));
+                        }
+                        _ => {}
+                    },
+                    Columns::MeanQuality => match constraint.op() {
+                        ConstraintOp::GT
+                        | ConstraintOp::GE
+                        | ConstraintOp::LT
+                        | ConstraintOp::LE
+                        | ConstraintOp::Eq => {
+                            usable.push((i, ("mean_quality", constraint.op())));
+                        }
+                        _ => {}
+                    },
+                    Columns::MinQuality => match constraint.op() {
+                        ConstraintOp::GT
+                        | ConstraintOp::GE
+                        | ConstraintOp::LT
+                        | ConstraintOp::LE
+                        | ConstraintOp::Eq => {
+                            usable.push((i, ("min_quality", constraint.op())));
                         }
                         _ => {}
                     },
@@ -312,6 +338,12 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
                         .map(|d| String::from_utf8_lossy(d).to_string())
                         .unwrap_or_default(),
                 )?,
+                Columns::MeanQuality => {
+                    context.set_result(mean_quality(record.quality_bytes().unwrap_or_default()))?
+                }
+                Columns::MinQuality => {
+                    context.set_result(min_quality(record.quality_bytes().unwrap_or_default()))?
+                }
                 Columns::Filename => {
                     context.set_result(self.fallback_filename.clone().unwrap_or_default())?
                 }

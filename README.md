@@ -11,6 +11,7 @@
 - Query FASTA/FASTQ using SQL
 - `.fai` index file support for FASTA (planned for FASTQ)
 - Pushdown filtering on id, description, sequence, sequence length, and gc content eg (`length > ?` or `sequence LIKE '%ACGT%' or gc_content > 0.6`)
+- Pushdown filtering on FASTQ quality metrics (`mean_quality > ?`, `min_quality > ?`)
 - Gzip support: `.fa.gz` and `.fastq.gz` decompressed on the fly
 - Exposed as SQLite virtual table modules (`fasta`, `fastq`)
 
@@ -33,7 +34,6 @@
 ### Planned
 - Exposed functions: `codon_count`, `has_stop_codon`, `translate(sequence)`, `quality_array(quality)` (decode PHRED scores to an array of integer scores)
 - Aggregate functions: `gc_histogram(sequence)`
-- Pushdown filters: `mean_quality/min_quality`
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`
 
 #### Indexes
