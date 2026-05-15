@@ -232,7 +232,7 @@ column() → materialize row
 
 Benchmarked on an Apple M2 (24GB).
 
-### Pushdown filters — 10k sequences (50–500 bp)
+### Pushdown filters: 10k sequences (50–500 bp)
 
 | Query                                           | Pushdown | No Pushdown | Speedup |
 |-------------------------------------------------|----------|-------------|---------|
@@ -241,7 +241,7 @@ Benchmarked on an Apple M2 (24GB).
 | `WHERE length > 100 AND sequence LIKE '%ACGT%'` | 1.77 ms  | 9.12 ms     | 5.2×    |
 
 
-### FAI index — 20 sequences (100k–500k bp, ~6.4 MB)
+### FAI index: 20 sequences (100k–500k bp, ~6.4 MB)
 
 | Query                    | With FAI | No FAI   | Speedup |
 |--------------------------|----------|----------|---------|
