@@ -264,7 +264,7 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
             match reader.next() {
                 Some(Ok(record)) => {
                     if self.plan.eval(&record) {
-                        self.current = Some(record.clone());
+                        self.current = Some(record);
                         self.rowid += 1;
                         if self.plan.unique {
                             self.exit_early = true;
