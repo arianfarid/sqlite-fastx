@@ -110,6 +110,15 @@ pub fn init(db: &Connection) -> Result<()> {
             ctx.set_result(valid)
         },
     )?;
+    db.create_scalar_function(
+        "base_composition",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let comp = base_composition(seq.as_bytes());
+            ctx.set_result(comp.to_string())
+        },
+    )?;
     db.create_aggregate_function::<(), N50Accumulator>(
         "n50",
         &FunctionOptions::default().set_n_args(1),

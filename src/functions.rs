@@ -1,8 +1,10 @@
 // Scalar
 
+use std::fmt::Display;
+
 use sqlite3_ext::{
     FromValue,
-    function::{AggregateFunction, FromUserData},
+    function::{AggregateFunction, FromUserData, ToContextResult},
 };
 
 pub fn compute_gc(seq: &[u8]) -> f64 {
@@ -94,13 +96,67 @@ pub fn min_quality(qual: &[u8]) -> i64 {
     qual.iter().map(|&b| (b - 33) as i64).min().unwrap_or(0)
 }
 
+pub struct BaseComposition {
+    pub a: f64,
+    pub c: f64,
+    pub g: f64,
+    pub t: f64,
+    pub u: f64,
+}
+impl Display for BaseComposition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        let mut sep = "";
+        for (base, val) in [
+            ("A", self.a),
+            ("C", self.c),
+            ("G", self.g),
+            ("T", self.t),
+            ("U", self.u),
+        ] {
+            write!(f, "{}\"{}\": {:.4}", sep, base, val)?;
+            sep = ", ";
+        }
+        write!(f, "}}")
+    }
+}
+pub fn base_composition(seq: &[u8]) -> BaseComposition {
+    let mut bcomp = BaseComposition {
+        a: 0.,
+        c: 0.,
+        g: 0.,
+        t: 0.,
+        u: 0.,
+    };
+    if seq.is_empty() {
+        return bcomp;
+    }
+    let total = seq.len() as f64;
+    seq.iter().for_each(|&b| match &b.to_ascii_uppercase() {
+        b'A' => bcomp.a += 1.,
+        b'G' => bcomp.g += 1.,
+        b'T' => bcomp.t += 1.,
+        b'C' => bcomp.c += 1.,
+        b'U' => bcomp.u += 1.,
+        _ => {}
+    });
+
+    bcomp.a /= total;
+    bcomp.g /= total;
+    bcomp.c /= total;
+    bcomp.t /= total;
+    bcomp.u /= total;
+
+    bcomp
+}
+
 // Aggregates
 
 pub struct N50Accumulator {
     lengths: Vec<i64>,
 }
 impl FromUserData<()> for N50Accumulator {
-    fn from_user_data(data: &()) -> Self {
+    fn from_user_data(_: &()) -> Self {
         N50Accumulator { lengths: vec![] }
     }
 }
@@ -465,5 +521,92 @@ mod tests {
     #[test]
     fn min_quality_empty() {
         assert_eq!(min_quality(b""), 0);
+    }
+
+    // base_composition
+    #[test]
+    fn base_composition_empty() {
+        let bc = base_composition(b"");
+        assert_eq!(bc.a, 0.0);
+        assert_eq!(bc.c, 0.0);
+        assert_eq!(bc.g, 0.0);
+        assert_eq!(bc.t, 0.0);
+        assert_eq!(bc.u, 0.0);
+    }
+
+    #[test]
+    fn base_composition_equal_dna() {
+        let bc = base_composition(b"ACGT");
+        assert_eq!(bc.a, 0.25);
+        assert_eq!(bc.c, 0.25);
+        assert_eq!(bc.g, 0.25);
+        assert_eq!(bc.t, 0.25);
+        assert_eq!(bc.u, 0.0);
+    }
+
+    #[test]
+    fn base_composition_equal_rna() {
+        let bc = base_composition(b"ACGU");
+        assert_eq!(bc.a, 0.25);
+        assert_eq!(bc.c, 0.25);
+        assert_eq!(bc.g, 0.25);
+        assert_eq!(bc.t, 0.0);
+        assert_eq!(bc.u, 0.25);
+    }
+
+    #[test]
+    fn base_composition_all_one_base() {
+        let bc = base_composition(b"AAAA");
+        assert_eq!(bc.a, 1.0);
+        assert_eq!(bc.c, 0.0);
+        assert_eq!(bc.g, 0.0);
+        assert_eq!(bc.t, 0.0);
+        assert_eq!(bc.u, 0.0);
+    }
+
+    #[test]
+    fn base_composition_lowercase() {
+        let bc = base_composition(b"acgt");
+        assert_eq!(bc.a, 0.25);
+        assert_eq!(bc.c, 0.25);
+        assert_eq!(bc.g, 0.25);
+        assert_eq!(bc.t, 0.25);
+        assert_eq!(bc.u, 0.0);
+    }
+
+    #[test]
+    fn base_composition_mixed_case() {
+        let upper = base_composition(b"AACCGGTT");
+        let lower = base_composition(b"aaccggtt");
+        assert_eq!(upper.a, lower.a);
+        assert_eq!(upper.c, lower.c);
+        assert_eq!(upper.g, lower.g);
+        assert_eq!(upper.t, lower.t);
+    }
+
+    #[test]
+    fn base_composition_with_n() {
+        // N is not counted in any base but is included in total length,
+        // so fractions are diluted
+        let bc = base_composition(b"ACGTN");
+        assert_eq!(bc.a, 0.2);
+        assert_eq!(bc.c, 0.2);
+        assert_eq!(bc.g, 0.2);
+        assert_eq!(bc.t, 0.2);
+        assert_eq!(bc.u, 0.0);
+    }
+
+    #[test]
+    fn base_composition_sums_to_one_dna() {
+        let bc = base_composition(b"AACCGGTT");
+        let sum = bc.a + bc.c + bc.g + bc.t + bc.u;
+        assert!((sum - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn base_composition_sums_to_one_rna() {
+        let bc = base_composition(b"AACCGGUU");
+        let sum = bc.a + bc.c + bc.g + bc.t + bc.u;
+        assert!((sum - 1.0).abs() < 1e-10);
     }
 }
