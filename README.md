@@ -15,23 +15,24 @@
 - Exposed as SQLite virtual table modules (`fasta`, `fastq`)
 
 #### Exposed scalar functions:
-- `gc_content(sequence)` — GC content as a value between 0.0 and 1.0
-- `reverse_complement(sequence)` — reverse complement of a DNA/RNA sequence
-- `to_rna(sequence)` - DNA -> RNA (T->U)
-- `to_dna(sequence)` - RNA -> DNA (U->T)
-- `is_valid_dna(sequence)` - True if sequence contains only A, G, C, T, or N
-- `is_valid_rna(sequence)` - True if sequence contains only A, G, C, U, or N
-- `n_count(sequence)` — count of ambiguous bases (N)
-- `base_count(sequence, base)` — count occurrences of a specific base
-- `mean_quality(quality)` — mean Phred quality score of a FASTQ quality string
-- `min_quality(quality)` — minimum Phred quality score of a FASTQ quality string
+- `gc_content(sequence)`: GC content as a value between 0.0 and 1.0
+- `reverse_complement(sequence)`: reverse complement of a DNA/RNA sequence
+- `to_rna(sequence)`: DNA -> RNA (T->U)
+- `to_dna(sequence)`: RNA -> DNA (U->T)
+- `is_valid_dna(sequence)`: True if sequence contains only A, G, C, T, or N
+- `is_valid_rna(sequence)`: True if sequence contains only A, G, C, U, or N
+- `n_count(sequence)`: count of ambiguous bases (N)
+- `base_count(sequence, base)`: count occurrences of a specific base
+- `mean_quality(quality)`: mean Phred quality score of a FASTQ quality string
+- `min_quality(quality)`: minimum Phred quality score of a FASTQ quality string
+- `base_composition(sequence)`: Per-base fractions as JSON
 
 #### Exposed aggregate functions:
-- `n50()` - n50 statistic of a numeric column
+- `n50()`: n50 statistic of a numeric column
 
 ### Planned
 - Exposed functions: `codon_count`, `has_stop_codon`, `translate(sequence)`, `quality_array(quality)` (decode PHRED scores to an array of integer scores)
-- Aggregate functions: `base_composition(sequence)`, `gc_histogram(sequence)`
+- Aggregate functions: `gc_histogram(sequence)`
 - Pushdown filters: `mean_quality/min_quality`
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`
 
