@@ -3,6 +3,8 @@ GOALS.md
 PROJECT_PLAN.md
 TESTING.md
 bench.fa
+bench_wide.fa
+bench_wide_nofai.fa
 *.fa.gz
 test.fa
 testb.db
