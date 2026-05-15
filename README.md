@@ -195,6 +195,99 @@ SELECT * FROM seqs WHERE id = 'chr1';
 
 Note: the `fai` index is treated as authoritative, and `sqlite-fastx` assumes the `.fai` and `.fasta` files are in sync.
 
+## Cookbook
+
+### QC filter reads
+
+Keep only reads with mean quality ≥ 30 and length ≥ 50:
+
+```sql
+CREATE VIRTUAL TABLE reads USING fastq('sample.fastq');
+
+SELECT id, length, mean_quality
+FROM reads
+WHERE mean_quality >= 30
+  AND length >= 50;
+```
+
+### GC content outlier detection
+
+Flag sequences with unusually high or low GC:
+
+```sql
+CREATE VIRTUAL TABLE assembly USING fasta('assembly.fa');
+
+SELECT id, length, gc_content
+FROM assembly
+WHERE gc_content < 0.3 OR gc_content > 0.7
+ORDER BY gc_content;
+```
+
+### Per-base composition
+
+Inspect nucleotide fractions for each sequence, extracting individual bases via `json_extract` (requires SQLite 3.38.0+, built-in by default since 2022):
+
+```sql
+SELECT
+    id,
+    json_extract(base_composition(sequence), '$.A') AS a_frac,
+    json_extract(base_composition(sequence), '$.T') AS t_frac,
+    json_extract(base_composition(sequence), '$.G') AS g_frac,
+    json_extract(base_composition(sequence), '$.C') AS c_frac
+FROM assembly;
+```
+
+### Extract a region by position
+
+Pull bases 20–200 from a specific contig (FAI recommended for large genomes):
+
+```sql
+SELECT substr(sequence, 20, 181) AS region
+FROM fasta('genome.fa')
+WHERE id = 'chr1';
+```
+
+### N50 of an assembly
+
+```sql
+CREATE VIRTUAL TABLE assembly USING fasta('assembly.fa');
+
+SELECT n50(length) FROM assembly;
+```
+
+### Join sequences against an annotations table
+
+Given a SQLite table `genes(chrom, start, end, name)`:
+
+```sql
+CREATE VIRTUAL TABLE genome USING fasta('genome.fa');
+
+SELECT g.name, g.start, g.end, f.gc_content
+FROM genes g
+JOIN genome f ON f.id = g.chrom
+WHERE f.gc_content > 0.5;
+```
+
+### Find sequences containing a motif
+
+```sql
+SELECT id, length
+FROM fasta('genome.fa')
+WHERE sequence LIKE '%TATAAA%';
+```
+
+### Combine quality and sequence filters
+
+Reads that are long, high quality, and start with a known adapter-free sequence:
+
+```sql
+SELECT id
+FROM reads
+WHERE length >= 100
+  AND mean_quality >= 25
+  AND sequence LIKE 'ACGT%';
+```
+
 ## Architecture
 
 ### Current Flow
