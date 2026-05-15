@@ -1,10 +1,13 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use sqlite_fastx::filters::{SequenceOp, TextFilter};
+use sqlite_fastx::filters::{LikeFilter, SequenceOp};
 use sqlite_fastx::init;
 use sqlite3_ext::{Database, FallibleIteratorMut, FromValue};
 use std::hint::black_box;
 
 const BENCH_FA: &str = "bench.fa";
+const BENCH_WIDE_FAI: &str = "bench_wide.fa";
+const BENCH_WIDE_NOFAI: &str = "bench_wide_nofai.fa";
+const WIDE_COUNT: usize = 20;
 
 fn setup() -> Database {
     let db = Database::open(":memory:").unwrap();
@@ -206,7 +209,7 @@ fn bench_sequence_search(c: &mut Criterion) {
 
     // contains (4bp motif)
     {
-        let filter = TextFilter {
+        let filter = LikeFilter {
             op: SequenceOp::Contains,
             pattern: "ACGT".to_string(),
         };
@@ -228,7 +231,7 @@ fn bench_sequence_search(c: &mut Criterion) {
         let mut group = c.benchmark_group("sequence_search/contains_4bp");
         for (name, seq) in cases {
             group.bench_function(format!("{name}"), |b| {
-                b.iter(|| black_box(filter.like(black_box(seq))))
+                b.iter(|| black_box(filter.eval(black_box(seq))))
             });
         }
         group.finish();
@@ -236,7 +239,7 @@ fn bench_sequence_search(c: &mut Criterion) {
 
     // contains (50bp probe)
     {
-        let filter = TextFilter {
+        let filter = LikeFilter {
             op: SequenceOp::Contains,
             pattern: String::from_utf8(pattern_medium.to_vec())
                 .unwrap()
@@ -254,7 +257,7 @@ fn bench_sequence_search(c: &mut Criterion) {
         let mut group = c.benchmark_group("sequence_search/contains_50bp");
         for (name, seq) in cases {
             group.bench_function(format!("{name}"), |b| {
-                b.iter(|| black_box(filter.like(black_box(seq))))
+                b.iter(|| black_box(filter.eval(black_box(seq))))
             });
         }
         group.finish();
@@ -262,7 +265,7 @@ fn bench_sequence_search(c: &mut Criterion) {
 
     // contains (130bp read-length)
     {
-        let filter = TextFilter {
+        let filter = LikeFilter {
             op: SequenceOp::Contains,
             pattern: String::from_utf8(pattern_long.to_vec())
                 .unwrap()
@@ -278,7 +281,7 @@ fn bench_sequence_search(c: &mut Criterion) {
         let mut group = c.benchmark_group("sequence_search/contains_130bp");
         for (name, seq) in cases {
             group.bench_function(format!("{name}"), |b| {
-                b.iter(|| black_box(filter.like(black_box(seq))))
+                b.iter(|| black_box(filter.eval(black_box(seq))))
             });
         }
         group.finish();
@@ -286,7 +289,7 @@ fn bench_sequence_search(c: &mut Criterion) {
 
     // contains (500bp gene-scale)
     {
-        let filter = TextFilter {
+        let filter = LikeFilter {
             op: SequenceOp::Contains,
             pattern: String::from_utf8(pattern_very_long.clone())
                 .unwrap()
@@ -300,7 +303,7 @@ fn bench_sequence_search(c: &mut Criterion) {
         let mut group = c.benchmark_group("sequence_search/contains_500bp");
         for (name, seq) in cases {
             group.bench_function(format!("{name}"), |b| {
-                b.iter(|| black_box(filter.like(black_box(seq))))
+                b.iter(|| black_box(filter.eval(black_box(seq))))
             });
         }
         group.finish();
@@ -308,15 +311,15 @@ fn bench_sequence_search(c: &mut Criterion) {
 
     // starts_with / ends_with / eq — O(m) already, included for completeness
     {
-        let sw_filter = TextFilter {
+        let sw_filter = LikeFilter {
             op: SequenceOp::StartsWith,
             pattern: "ACGT".to_string(),
         };
-        let ew_filter = TextFilter {
+        let ew_filter = LikeFilter {
             op: SequenceOp::EndsWith,
             pattern: "ACGT".to_string(),
         };
-        let eq_filter = TextFilter {
+        let eq_filter = LikeFilter {
             op: SequenceOp::Eq,
             pattern: "ACGT".to_string(),
         };
@@ -328,13 +331,13 @@ fn bench_sequence_search(c: &mut Criterion) {
         let mut group = c.benchmark_group("sequence_search/starts_ends_eq");
         for (name, seq) in cases {
             group.bench_function(format!("starts_with/{name}"), |b| {
-                b.iter(|| black_box(sw_filter.like(black_box(seq))))
+                b.iter(|| black_box(sw_filter.eval(black_box(seq))))
             });
             group.bench_function(format!("ends_with/{name}"), |b| {
-                b.iter(|| black_box(ew_filter.like(black_box(seq))))
+                b.iter(|| black_box(ew_filter.eval(black_box(seq))))
             });
             group.bench_function(format!("eq/{name}"), |b| {
-                b.iter(|| black_box(eq_filter.like(black_box(seq))))
+                b.iter(|| black_box(eq_filter.eval(black_box(seq))))
             });
         }
         group.finish();
@@ -400,6 +403,56 @@ fn bench_scalar_functions(c: &mut Criterion) {
     group.finish();
 }
 
+// --- FAI vs. no-FAI benchmarks ---
+// Run the generators first:
+//   cargo run --bin gen_bench_wide
+//   cargo run --bin gen_bench_reads
+
+fn setup_fasta(path: &str) -> Database {
+    let db = Database::open(":memory:").unwrap();
+    init(&db).unwrap();
+    db.execute(
+        &format!("CREATE VIRTUAL TABLE fa USING fasta('{path}')"),
+        (),
+    )
+    .unwrap();
+    db
+}
+
+fn bench_wide_full_scan(c: &mut Criterion) {
+    let db_fai = setup_fasta(BENCH_WIDE_FAI);
+    let db_nofai = setup_fasta(BENCH_WIDE_NOFAI);
+    let mut group = c.benchmark_group("wide/full_scan");
+    group.bench_function("with_fai", |b| {
+        b.iter(|| black_box(count(&db_fai, "SELECT COUNT(*) FROM fa")))
+    });
+    group.bench_function("no_fai", |b| {
+        b.iter(|| black_box(count(&db_nofai, "SELECT COUNT(*) FROM fa")))
+    });
+    group.finish();
+}
+
+fn bench_wide_id_lookup(c: &mut Criterion) {
+    let db_fai = setup_fasta(BENCH_WIDE_FAI);
+    let db_nofai = setup_fasta(BENCH_WIDE_NOFAI);
+    let sql_middle = format!("SELECT COUNT(*) FROM fa WHERE id = 'seq{}'", WIDE_COUNT / 2);
+    let sql_last = format!("SELECT COUNT(*) FROM fa WHERE id = 'seq{}'", WIDE_COUNT - 1);
+    let mut group = c.benchmark_group("wide/id_lookup");
+    group.bench_function("middle/with_fai", |b| {
+        b.iter(|| black_box(count(&db_fai, &sql_middle)))
+    });
+    group.bench_function("middle/no_fai", |b| {
+        b.iter(|| black_box(count(&db_nofai, &sql_middle)))
+    });
+    group.bench_function("last/with_fai", |b| {
+        b.iter(|| black_box(count(&db_fai, &sql_last)))
+    });
+    group.bench_function("last/no_fai", |b| {
+        b.iter(|| black_box(count(&db_nofai, &sql_last)))
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_full_scan,
@@ -409,5 +462,7 @@ criterion_group!(
     bench_combined,
     bench_sequence_search,
     bench_scalar_functions,
+    bench_wide_full_scan,
+    bench_wide_id_lookup,
 );
 criterion_main!(benches);
