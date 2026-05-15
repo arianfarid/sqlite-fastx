@@ -32,8 +32,7 @@
 - `n50()`: n50 statistic of a numeric column
 
 ### Planned
-- Exposed functions: `codon_count`, `has_stop_codon`, `translate(sequence)`, `quality_array(quality)` (decode PHRED scores to an array of integer scores)
-- Aggregate functions: `gc_histogram(sequence)`
+- Exposed functions: `has_stop_codon`,
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`
 
 #### Indexes
