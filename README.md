@@ -63,6 +63,8 @@ CREATE TABLE fastq(
     length INTEGER,
     gc_content REAL,
     quality TEXT,
+    mean_quality REAL,
+    min_quality INTEGER,
     filename TEXT HIDDEN
 );
 ```
@@ -73,6 +75,8 @@ CREATE TABLE fastq(
 - `length`: Sequence length
 - `gc_content`: GC content as a value between 0.0 and 1.0
 - `quality`: FASTQ quality string (Phred+33 encoded, FASTQ only)
+- `mean_quality`: Mean Phred quality score across all bases
+- `min_quality`: Minimum Phred quality score across all bases
 - `filename`: Hidden column used to specify the file path
 
 ---
