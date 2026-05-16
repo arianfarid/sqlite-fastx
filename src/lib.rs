@@ -9,7 +9,6 @@ use fasta::*;
 mod fastq;
 use fastq::*;
 pub mod fai;
-use fai::*;
 
 #[sqlite3_ext_main]
 pub fn init(db: &Connection) -> Result<()> {
@@ -42,7 +41,7 @@ pub fn init(db: &Connection) -> Result<()> {
             let base = base_str
                 .as_bytes()
                 .first()
-                .ok_or_else(|| "base_count requires a non-empty base argument")?;
+                .ok_or("base_count requires a non-empty base argument")?;
             let count = base_count(seq.as_bytes(), *base)?;
             ctx.set_result(count)
         },

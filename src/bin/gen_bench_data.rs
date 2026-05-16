@@ -19,7 +19,7 @@ fn main() {
 
     for i in 0..count {
         let length = (rand() % 451 + 50) as usize; // 50–500
-        write!(out, ">seq{}\n", i).unwrap();
+        writeln!(out, ">seq{}", i).unwrap();
         for _ in 0..length {
             out.write_all(&[bases[(rand() % 4) as usize]]).unwrap();
         }

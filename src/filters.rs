@@ -113,6 +113,11 @@ pub struct ExecPlan {
     predicates: Vec<Predicate>,
     pub unique: bool,
 }
+impl Default for ExecPlan {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl ExecPlan {
     pub fn new() -> ExecPlan {
         ExecPlan {

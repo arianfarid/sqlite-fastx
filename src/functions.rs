@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use sqlite3_ext::{
     FromValue,
-    function::{AggregateFunction, FromUserData, ToContextResult},
+    function::{AggregateFunction, FromUserData},
 };
 
 pub fn compute_gc(seq: &[u8]) -> f64 {
@@ -196,11 +196,8 @@ impl AggregateFunction<()> for N50Accumulator {
     ) -> sqlite3_ext::Result<()> {
         let value = args[0].get_i64();
         let pos = self.lengths.iter().position(|&x| x == value);
-        match pos {
-            Some(position) => {
-                self.lengths.remove(position);
-            }
-            None => {}
+        if let Some(position) = pos {
+            self.lengths.remove(position);
         };
         Ok(())
     }

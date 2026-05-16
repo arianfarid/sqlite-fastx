@@ -33,10 +33,7 @@ impl SequenceReader for FastaSequenceReader {
             Err(_) => return None,
         };
         let region = noodles_core::Region::new(id, ..);
-        match index.query(&region) {
-            Ok(offset) => Some(offset),
-            Err(_) => return None,
-        }
+        index.query(&region).ok()
     }
 }
 impl SequenceRecord for OwnedRecord {
@@ -133,11 +130,13 @@ impl VTab<'_> for FastaModule {
                         ConstraintOp::Eq => usable.push((i, ("id", constraint.op()))),
                         _ => {}
                     },
+                    #[allow(clippy::single_match)]
                     Columns::Description => match constraint.op() {
                         ConstraintOp::Like => usable.push((i, ("description", constraint.op()))),
                         _ => {}
                     },
                     Columns::Sequence => {
+                        #[allow(clippy::single_match)]
                         match constraint.op() {
                             ConstraintOp::Like => usable.push((i, ("sequence", constraint.op()))),
                             _ => {} //No op
@@ -241,8 +240,7 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
                 let mut file = File::open(&path)
                     .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
 
-                let record_offset =
-                    find_record_offset(&mut file, offset).map_err(|e| Error::from(e))?;
+                let record_offset = find_record_offset(&mut file, offset).map_err(Error::from)?;
 
                 file.seek(SeekFrom::Start(record_offset))
                     .map_err(|e| Error::from(format!("Seek failed: {}", e)))?;
@@ -262,10 +260,7 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
     }
 
     fn next(&mut self) -> Result<()> {
-        let reader = self
-            .reader
-            .as_mut()
-            .ok_or_else(|| "reader not initialized")?;
+        let reader = self.reader.as_mut().ok_or("reader not initialized")?;
         loop {
             if self.exit_early {
                 self.done = true;
@@ -314,7 +309,7 @@ impl VTabCursor for SequenceCursor<FastaSequenceReader> {
                         .unwrap_or_default(),
                 )?,
                 Columns::Sequence => context
-                    .set_result(String::from_utf8_lossy(&record.sequence_bytes()).to_string())?,
+                    .set_result(String::from_utf8_lossy(record.sequence_bytes()).to_string())?,
                 Columns::Length => context.set_result(record.sequence_bytes().len() as i64)?,
                 Columns::GCContent => context.set_result(compute_gc(record.sequence_bytes()))?,
                 Columns::Filename => {
