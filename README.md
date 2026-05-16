@@ -77,7 +77,32 @@ CREATE TABLE fastq(
 
 ---
 
-## Build
+## Getting Started
+
+Pre-built binaries are available for all major platforms. Alternatively, you can build from source with the Rust toolchain.
+  
+## Installation
+
+Download the appropriate binary for your platform from the [Releases](../../releases) page:
+
+| Platform | File |
+|----------|------|
+| macOS Apple Silicon (M-series) | `sqlite_fastx-<version>-macos-arm64.dylib` |
+| macOS Intel | `sqlite_fastx-<version>-macos-x86_64.dylib` |
+| Linux x86_64 | `sqlite_fastx-<version>-linux-x86_64.so` |
+| Windows x86_64 | `sqlite_fastx-<version>-windows-x86_64.dll` |
+
+Then load it in SQLite:
+
+```sql
+.load /path/to/sqlite_fastx
+```
+
+SQLite appends the correct extension automatically — omit it from the path.
+
+---
+
+## Build from Source
 
 ### Prerequisites
 
