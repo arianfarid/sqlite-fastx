@@ -1,6 +1,9 @@
 use sqlite3_ext::*;
 
-use crate::{functions::compute_gc, reader::SequenceRecord};
+use crate::{
+    functions::{compute_gc, mean_quality, min_quality},
+    reader::SequenceRecord,
+};
 
 #[repr(i32)]
 pub enum CompareOp {
@@ -91,7 +94,8 @@ enum Predicate {
     Length(LengthFilter),
     Sequence(LikeFilter),
     GC(GCFilter),
-    // TODO: Substring
+    MinQuality(LengthFilter),
+    MeanQuality(GCFilter),
 }
 impl Predicate {
     fn eval<S: SequenceRecord>(&self, record: &S) -> bool {
@@ -105,6 +109,12 @@ impl Predicate {
             Predicate::Length(f) => f.eval(record.sequence_bytes().len() as i64),
             Predicate::GC(f) => f.eval(compute_gc(record.sequence_bytes())),
             Predicate::Sequence(s) => s.eval(record.sequence_bytes()),
+            Predicate::MeanQuality(f) => {
+                f.eval(mean_quality(record.quality_bytes().unwrap_or_default()))
+            }
+            Predicate::MinQuality(f) => {
+                f.eval(min_quality(record.quality_bytes().unwrap_or_default()))
+            }
         }
     }
 }
@@ -220,7 +230,47 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
                 let (op, pattern) = parse_like_pattern(&raw);
                 predicates.push(Predicate::Sequence(LikeFilter { op, pattern }))
             }
-            _ => continue,
+            ("mean_quality", "Gt") => predicates.push(Predicate::MeanQuality(GCFilter {
+                op: CompareOp::Gt,
+                value: arg.get_f64(),
+            })),
+            ("mean_quality", "Ge") => predicates.push(Predicate::MeanQuality(GCFilter {
+                op: CompareOp::Ge,
+                value: arg.get_f64(),
+            })),
+            ("mean_quality", "Lt") => predicates.push(Predicate::MeanQuality(GCFilter {
+                op: CompareOp::Lt,
+                value: arg.get_f64(),
+            })),
+            ("mean_quality", "Le") => predicates.push(Predicate::MeanQuality(GCFilter {
+                op: CompareOp::Le,
+                value: arg.get_f64(),
+            })),
+            ("mean_quality", "Eq") => predicates.push(Predicate::MeanQuality(GCFilter {
+                op: CompareOp::Eq,
+                value: arg.get_f64(),
+            })),
+            ("min_quality", "Gt") => predicates.push(Predicate::MinQuality(LengthFilter {
+                op: CompareOp::Gt,
+                value: arg.get_i64(),
+            })),
+            ("min_quality", "Ge") => predicates.push(Predicate::MinQuality(LengthFilter {
+                op: CompareOp::Ge,
+                value: arg.get_i64(),
+            })),
+            ("min_quality", "Lt") => predicates.push(Predicate::MinQuality(LengthFilter {
+                op: CompareOp::Lt,
+                value: arg.get_i64(),
+            })),
+            ("min_quality", "Le") => predicates.push(Predicate::MinQuality(LengthFilter {
+                op: CompareOp::Le,
+                value: arg.get_i64(),
+            })),
+            ("min_quality", "Eq") => predicates.push(Predicate::MinQuality(LengthFilter {
+                op: CompareOp::Eq,
+                value: arg.get_i64(),
+            })),
+            _ => {}
         };
     }
     Ok(ExecPlan { predicates, unique })

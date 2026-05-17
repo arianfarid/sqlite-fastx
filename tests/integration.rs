@@ -748,3 +748,320 @@ fn fastq_file_not_found() {
     .unwrap();
     assert!(try_query(&db, "SELECT * FROM bad").is_err());
 }
+
+// --- FASTQ virtual table: missing length filter variants ---
+
+#[test]
+fn fastq_length_ge() {
+    // all four reads have length >= 4
+    assert_eq!(
+        scalar_i64(&fastq_db(), "SELECT COUNT(*) FROM fq WHERE length >= 4"),
+        4
+    );
+}
+
+#[test]
+fn fastq_length_lt() {
+    // read1(4), read2(4) < 8
+    assert_eq!(
+        scalar_i64(&fastq_db(), "SELECT COUNT(*) FROM fq WHERE length < 8"),
+        2
+    );
+}
+
+#[test]
+fn fastq_length_le() {
+    // all four reads have length <= 8
+    assert_eq!(
+        scalar_i64(&fastq_db(), "SELECT COUNT(*) FROM fq WHERE length <= 8"),
+        4
+    );
+}
+
+#[test]
+fn fastq_length_eq() {
+    // read1(4), read2(4)
+    assert_eq!(
+        scalar_i64(&fastq_db(), "SELECT COUNT(*) FROM fq WHERE length = 4"),
+        2
+    );
+}
+
+// --- FASTQ virtual table: gc_content lt/le ---
+
+#[test]
+fn fastq_gc_content_lt() {
+    // read3(0.25) < 0.5
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE gc_content < 0.5"
+        ),
+        1
+    );
+}
+
+#[test]
+fn fastq_gc_content_le() {
+    // read1(0.50), read3(0.25) <= 0.5
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE gc_content <= 0.5"
+        ),
+        2
+    );
+}
+
+// --- FASTQ virtual table: mean_quality / min_quality column values ---
+
+#[test]
+fn fastq_mean_quality_column_high() {
+    // read1: IIII → Q40 each → mean = 40.0
+    assert_eq!(
+        scalar_f64(
+            &fastq_db(),
+            "SELECT mean_quality FROM fq WHERE id LIKE 'read1'"
+        ),
+        40.0
+    );
+}
+
+#[test]
+fn fastq_mean_quality_column_mixed() {
+    // read4: IIII???? → Q40,Q40,Q40,Q40,Q30,Q30,Q30,Q30 → mean = 35.0
+    assert_eq!(
+        scalar_f64(
+            &fastq_db(),
+            "SELECT mean_quality FROM fq WHERE id LIKE 'read4'"
+        ),
+        35.0
+    );
+}
+
+#[test]
+fn fastq_min_quality_column_high() {
+    // read1: IIII → all Q40 → min = 40
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT min_quality FROM fq WHERE id LIKE 'read1'"
+        ),
+        40
+    );
+}
+
+#[test]
+fn fastq_min_quality_column_mixed() {
+    // read4: IIII???? → Q40 and Q30 mixed → min = 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT min_quality FROM fq WHERE id LIKE 'read4'"
+        ),
+        30
+    );
+}
+
+// --- FASTQ virtual table: mean_quality filter ---
+
+#[test]
+fn fastq_mean_quality_gt() {
+    // read1(40.0), read4(35.0) > 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE mean_quality > 30"
+        ),
+        2
+    );
+}
+
+#[test]
+fn fastq_mean_quality_ge() {
+    // read1(40.0), read3(30.0), read4(35.0) >= 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE mean_quality >= 30"
+        ),
+        3
+    );
+}
+
+#[test]
+fn fastq_mean_quality_lt() {
+    // read2(0.0) < 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE mean_quality < 30"
+        ),
+        1
+    );
+}
+
+#[test]
+fn fastq_mean_quality_le() {
+    // read2(0.0), read3(30.0) <= 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE mean_quality <= 30"
+        ),
+        2
+    );
+}
+
+// --- FASTQ virtual table: min_quality filter ---
+
+#[test]
+fn fastq_min_quality_gt() {
+    // read1(40) > 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE min_quality > 30"
+        ),
+        1
+    );
+}
+
+#[test]
+fn fastq_min_quality_ge() {
+    // read1(40), read3(30), read4(30) >= 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE min_quality >= 30"
+        ),
+        3
+    );
+}
+
+#[test]
+fn fastq_min_quality_lt() {
+    // read2(0) < 30
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE min_quality < 30"
+        ),
+        1
+    );
+}
+
+// --- FASTQ virtual table: combined filters ---
+
+#[test]
+fn fastq_length_and_mean_quality_combined() {
+    // length > 4 AND mean_quality >= 30: read3(8, 30.0), read4(8, 35.0)
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE length > 4 AND mean_quality >= 30"
+        ),
+        2
+    );
+}
+
+#[test]
+fn fastq_gc_content_and_min_quality_combined() {
+    // gc_content > 0.5 AND min_quality > 0:
+    //   read2(gc=1.0, min=0) → excluded (min not > 0)
+    //   read4(gc=0.75, min=30) → included
+    assert_eq!(
+        scalar_i64(
+            &fastq_db(),
+            "SELECT COUNT(*) FROM fq WHERE gc_content > 0.5 AND min_quality > 0"
+        ),
+        1
+    );
+}
+
+// --- FASTA virtual table: id equality (Eq path, sets unique=true) ---
+
+#[test]
+fn fasta_id_eq() {
+    assert_eq!(
+        scalar_str(&fasta_db(), "SELECT id FROM fa WHERE id = 'seq1'"),
+        "seq1"
+    );
+}
+
+// --- base_composition scalar ---
+
+#[test]
+fn base_composition_equal_dna() {
+    assert_eq!(
+        scalar_str(&db(), "SELECT base_composition('ACGT')"),
+        r#"{"A": 0.2500, "C": 0.2500, "G": 0.2500, "T": 0.2500, "U": 0.0000}"#
+    );
+}
+
+#[test]
+fn base_composition_empty() {
+    assert_eq!(
+        scalar_str(&db(), "SELECT base_composition('')"),
+        r#"{"A": 0.0000, "C": 0.0000, "G": 0.0000, "T": 0.0000, "U": 0.0000}"#
+    );
+}
+
+#[test]
+fn base_composition_pure_gc() {
+    assert_eq!(
+        scalar_str(&db(), "SELECT base_composition('GCGC')"),
+        r#"{"A": 0.0000, "C": 0.5000, "G": 0.5000, "T": 0.0000, "U": 0.0000}"#
+    );
+}
+
+#[test]
+fn base_composition_rna() {
+    assert_eq!(
+        scalar_str(&db(), "SELECT base_composition('ACGU')"),
+        r#"{"A": 0.2500, "C": 0.2500, "G": 0.2500, "T": 0.0000, "U": 0.2500}"#
+    );
+}
+
+// --- gc_content scalar: ambiguous bases ---
+
+#[test]
+fn gc_content_with_n_bases() {
+    // ACGTN: 2 GC out of 5 = 0.4
+    assert_eq!(scalar_f64(&db(), "SELECT gc_content('ACGTN')"), 0.4);
+}
+
+// --- reverse_complement: lowercase via SQL ---
+
+#[test]
+fn reverse_complement_lowercase_sql() {
+    assert_eq!(
+        scalar_str(&db(), "SELECT reverse_complement('aaaa')"),
+        "tttt"
+    );
+}
+
+// --- is_valid_dna / is_valid_rna: empty string ---
+
+#[test]
+fn is_valid_dna_empty() {
+    assert_eq!(scalar_i64(&db(), "SELECT is_valid_dna('')"), 1);
+}
+
+#[test]
+fn is_valid_rna_empty() {
+    assert_eq!(scalar_i64(&db(), "SELECT is_valid_rna('')"), 1);
+}
+
+// --- n50 aggregate: empty result set ---
+
+#[test]
+fn n50_empty_result_set() {
+    assert_eq!(
+        scalar_i64(
+            &db(),
+            "SELECT n50(x) FROM (SELECT 1 AS x) WHERE x < 0"
+        ),
+        0
+    );
+}
