@@ -25,11 +25,11 @@ impl CompareOp {
         }
     }
 }
-pub struct LengthFilter {
+pub struct IntFilter {
     pub op: CompareOp,
     pub value: i64,
 }
-impl LengthFilter {
+impl IntFilter {
     pub fn eval(&self, len: i64) -> bool {
         match self.op {
             CompareOp::Gt => len > self.value,
@@ -40,11 +40,11 @@ impl LengthFilter {
         }
     }
 }
-pub struct GCFilter {
+pub struct FloatFilter {
     pub op: CompareOp,
     pub value: f64,
 }
-impl GCFilter {
+impl FloatFilter {
     pub fn eval(&self, gc: f64) -> bool {
         match self.op {
             CompareOp::Gt => gc > self.value,
@@ -91,11 +91,11 @@ enum Predicate {
     IDLike(LikeFilter),
     IDEq(EqFilter),
     Description(LikeFilter),
-    Length(LengthFilter),
+    Length(IntFilter),
     Sequence(LikeFilter),
-    GC(GCFilter),
-    MinQuality(LengthFilter),
-    MeanQuality(GCFilter),
+    GC(FloatFilter),
+    MinQuality(IntFilter),
+    MeanQuality(FloatFilter),
 }
 impl Predicate {
     fn eval<S: SequenceRecord>(&self, record: &S) -> bool {
@@ -166,43 +166,43 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
         let op = parts.next().unwrap_or("");
 
         match (col, op) {
-            ("length", "Gt") => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Gt") => predicates.push(Predicate::Length(IntFilter {
                 op: CompareOp::Gt,
                 value: arg.get_i64(),
             })),
-            ("length", "Ge") => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Ge") => predicates.push(Predicate::Length(IntFilter {
                 op: CompareOp::Ge,
                 value: arg.get_i64(),
             })),
-            ("length", "Lt") => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Lt") => predicates.push(Predicate::Length(IntFilter {
                 op: CompareOp::Lt,
                 value: arg.get_i64(),
             })),
-            ("length", "Le") => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Le") => predicates.push(Predicate::Length(IntFilter {
                 op: CompareOp::Le,
                 value: arg.get_i64(),
             })),
-            ("length", "Eq") => predicates.push(Predicate::Length(LengthFilter {
+            ("length", "Eq") => predicates.push(Predicate::Length(IntFilter {
                 op: CompareOp::Eq,
                 value: arg.get_i64(),
             })),
-            ("gc_content", "Gt") => predicates.push(Predicate::GC(GCFilter {
+            ("gc_content", "Gt") => predicates.push(Predicate::GC(FloatFilter {
                 op: CompareOp::Gt,
                 value: arg.get_f64(),
             })),
-            ("gc_content", "Ge") => predicates.push(Predicate::GC(GCFilter {
+            ("gc_content", "Ge") => predicates.push(Predicate::GC(FloatFilter {
                 op: CompareOp::Ge,
                 value: arg.get_f64(),
             })),
-            ("gc_content", "Lt") => predicates.push(Predicate::GC(GCFilter {
+            ("gc_content", "Lt") => predicates.push(Predicate::GC(FloatFilter {
                 op: CompareOp::Lt,
                 value: arg.get_f64(),
             })),
-            ("gc_content", "Le") => predicates.push(Predicate::GC(GCFilter {
+            ("gc_content", "Le") => predicates.push(Predicate::GC(FloatFilter {
                 op: CompareOp::Le,
                 value: arg.get_f64(),
             })),
-            ("gc_content", "Eq") => predicates.push(Predicate::GC(GCFilter {
+            ("gc_content", "Eq") => predicates.push(Predicate::GC(FloatFilter {
                 op: CompareOp::Eq,
                 value: arg.get_f64(),
             })),
@@ -230,43 +230,43 @@ pub fn parse_plan(index_str: Option<&str>, args: &mut [&mut ValueRef]) -> Result
                 let (op, pattern) = parse_like_pattern(&raw);
                 predicates.push(Predicate::Sequence(LikeFilter { op, pattern }))
             }
-            ("mean_quality", "Gt") => predicates.push(Predicate::MeanQuality(GCFilter {
+            ("mean_quality", "Gt") => predicates.push(Predicate::MeanQuality(FloatFilter {
                 op: CompareOp::Gt,
                 value: arg.get_f64(),
             })),
-            ("mean_quality", "Ge") => predicates.push(Predicate::MeanQuality(GCFilter {
+            ("mean_quality", "Ge") => predicates.push(Predicate::MeanQuality(FloatFilter {
                 op: CompareOp::Ge,
                 value: arg.get_f64(),
             })),
-            ("mean_quality", "Lt") => predicates.push(Predicate::MeanQuality(GCFilter {
+            ("mean_quality", "Lt") => predicates.push(Predicate::MeanQuality(FloatFilter {
                 op: CompareOp::Lt,
                 value: arg.get_f64(),
             })),
-            ("mean_quality", "Le") => predicates.push(Predicate::MeanQuality(GCFilter {
+            ("mean_quality", "Le") => predicates.push(Predicate::MeanQuality(FloatFilter {
                 op: CompareOp::Le,
                 value: arg.get_f64(),
             })),
-            ("mean_quality", "Eq") => predicates.push(Predicate::MeanQuality(GCFilter {
+            ("mean_quality", "Eq") => predicates.push(Predicate::MeanQuality(FloatFilter {
                 op: CompareOp::Eq,
                 value: arg.get_f64(),
             })),
-            ("min_quality", "Gt") => predicates.push(Predicate::MinQuality(LengthFilter {
+            ("min_quality", "Gt") => predicates.push(Predicate::MinQuality(IntFilter {
                 op: CompareOp::Gt,
                 value: arg.get_i64(),
             })),
-            ("min_quality", "Ge") => predicates.push(Predicate::MinQuality(LengthFilter {
+            ("min_quality", "Ge") => predicates.push(Predicate::MinQuality(IntFilter {
                 op: CompareOp::Ge,
                 value: arg.get_i64(),
             })),
-            ("min_quality", "Lt") => predicates.push(Predicate::MinQuality(LengthFilter {
+            ("min_quality", "Lt") => predicates.push(Predicate::MinQuality(IntFilter {
                 op: CompareOp::Lt,
                 value: arg.get_i64(),
             })),
-            ("min_quality", "Le") => predicates.push(Predicate::MinQuality(LengthFilter {
+            ("min_quality", "Le") => predicates.push(Predicate::MinQuality(IntFilter {
                 op: CompareOp::Le,
                 value: arg.get_i64(),
             })),
-            ("min_quality", "Eq") => predicates.push(Predicate::MinQuality(LengthFilter {
+            ("min_quality", "Eq") => predicates.push(Predicate::MinQuality(IntFilter {
                 op: CompareOp::Eq,
                 value: arg.get_i64(),
             })),
@@ -292,10 +292,10 @@ fn parse_like_pattern(raw: &str) -> (SequenceOp, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // LengthFilter tests
+    // IntFilter tests
     #[test]
-    fn length_filter_gt() {
-        let f = LengthFilter {
+    fn int_filter_gt() {
+        let f = IntFilter {
             op: CompareOp::Gt,
             value: 10,
         };
@@ -305,8 +305,41 @@ mod tests {
     }
 
     #[test]
-    fn length_filter_eq() {
-        let f = LengthFilter {
+    fn int_filter_ge() {
+        let f = IntFilter {
+            op: CompareOp::Ge,
+            value: 10,
+        };
+        assert!(f.eval(11));
+        assert!(f.eval(10));
+        assert!(!f.eval(9));
+    }
+
+    #[test]
+    fn int_filter_lt() {
+        let f = IntFilter {
+            op: CompareOp::Lt,
+            value: 10,
+        };
+        assert!(f.eval(9));
+        assert!(!f.eval(10));
+        assert!(!f.eval(11));
+    }
+
+    #[test]
+    fn int_filter_le() {
+        let f = IntFilter {
+            op: CompareOp::Le,
+            value: 10,
+        };
+        assert!(f.eval(9));
+        assert!(f.eval(10));
+        assert!(!f.eval(11));
+    }
+
+    #[test]
+    fn int_filter_eq() {
+        let f = IntFilter {
             op: CompareOp::Eq,
             value: 10,
         };
@@ -385,10 +418,10 @@ mod tests {
         assert!(f.eval(b"AcGt"));
     }
 
-    // GC Filter
+    // FloatFilter tests
     #[test]
-    fn gc_filter_gt() {
-        let f = GCFilter {
+    fn float_filter_gt() {
+        let f = FloatFilter {
             op: CompareOp::Gt,
             value: 0.5,
         };
@@ -398,8 +431,8 @@ mod tests {
     }
 
     #[test]
-    fn gc_filter_ge() {
-        let f = GCFilter {
+    fn float_filter_ge() {
+        let f = FloatFilter {
             op: CompareOp::Ge,
             value: 0.5,
         };
@@ -409,8 +442,8 @@ mod tests {
     }
 
     #[test]
-    fn gc_filter_lt() {
-        let f = GCFilter {
+    fn float_filter_lt() {
+        let f = FloatFilter {
             op: CompareOp::Lt,
             value: 0.5,
         };
@@ -420,8 +453,8 @@ mod tests {
     }
 
     #[test]
-    fn gc_filter_le() {
-        let f = GCFilter {
+    fn float_filter_le() {
+        let f = FloatFilter {
             op: CompareOp::Le,
             value: 0.5,
         };
@@ -431,8 +464,8 @@ mod tests {
     }
 
     #[test]
-    fn gc_filter_eq() {
-        let f = GCFilter {
+    fn float_filter_eq() {
+        let f = FloatFilter {
             op: CompareOp::Eq,
             value: 0.5,
         };
@@ -442,15 +475,15 @@ mod tests {
     }
 
     #[test]
-    fn gc_filter_boundaries() {
-        let f = GCFilter {
+    fn float_filter_boundaries() {
+        let f = FloatFilter {
             op: CompareOp::Ge,
             value: 0.0,
         };
         assert!(f.eval(0.0));
         assert!(f.eval(1.0));
 
-        let f = GCFilter {
+        let f = FloatFilter {
             op: CompareOp::Le,
             value: 1.0,
         };
@@ -459,9 +492,8 @@ mod tests {
     }
 
     #[test]
-    fn gc_filter_pure_gc() {
-        // 1.0 GC content
-        let f = GCFilter {
+    fn float_filter_eq_one() {
+        let f = FloatFilter {
             op: CompareOp::Eq,
             value: 1.0,
         };
@@ -470,9 +502,8 @@ mod tests {
     }
 
     #[test]
-    fn gc_filter_no_gc() {
-        // 0.0 GC content
-        let f = GCFilter {
+    fn float_filter_eq_zero() {
+        let f = FloatFilter {
             op: CompareOp::Eq,
             value: 0.0,
         };
