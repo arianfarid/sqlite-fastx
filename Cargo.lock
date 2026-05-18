@@ -730,9 +730,9 @@ dependencies = [
 
 [[package]]
 name = "sqlite3_ext"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0758470d3ad4cbd0b7e9db9963f4d1e391bbfc3aa20a9b99e9ffd6a48ea5e4a"
+checksum = "944e0bfa54337e3bd468f0b1f780b259a39ca82c930b8c0724a7aba41cf4c74f"
 dependencies = [
  "bitflags 1.3.2",
  "fallible-iterator",
