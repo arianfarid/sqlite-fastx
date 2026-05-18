@@ -1,6 +1,11 @@
 # `sqlite-fastx`
+---
 
 `sqlite-fastx` is a SQLITE virtual table extension for querying FASTA files directly from disk.
+
+> [!IMPORTANT]
+> _`sqlite-fastx` is pre-v1.0. Breaking changes are expected until the project reaches its v1.0 milestone._
+
 
 ---
 
@@ -37,7 +42,7 @@
 
 #### Indexes
 - FASTQ `.fai` support
-- Optional FM-Index for fast substring queries on materialized datasets
+- Optional indexes for fast substring queries on materialized datasets
 ---
 
 ## Table Schema
