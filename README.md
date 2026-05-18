@@ -99,7 +99,7 @@ Download the appropriate binary for your platform from the [Releases](../../rele
 | macOS Apple Silicon (M-series) | `sqlite_fastx-<version>-macos-arm64.dylib` |
 | macOS Intel | `sqlite_fastx-<version>-macos-x86_64.dylib` |
 | Linux x86_64 | `sqlite_fastx-<version>-linux-x86_64.so` |
-| Windows x86_64 | `sqlite_fastx-<version>-windows-x86_64.dll` |
+<!--| Windows x86_64 | `sqlite_fastx-<version>-windows-x86_64.dll` |-->
 
 Then load it in SQLite:
 
