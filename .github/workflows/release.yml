@@ -30,8 +30,11 @@ jobs:
             target_name: macos-x86_64
             ext: dylib
 
-          # Windows excluded: sqlite3_ext 0.2.0 has a unix-only path_to_cstring
-          # that prevents compilation on Windows. Revisit when upstream fixes it.
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: sqlite_fastx.dll
+            target_name: windows-x86_64
+            ext: dll
 
     steps:
       - uses: actions/checkout@v4
