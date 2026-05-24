@@ -16,3 +16,9 @@ bench.fastq
 !tests/fixtures/*.fa
 !tests/fixtures/*.fastq
 *.fai
+
+all_sequences.fasta
+
+bench_real.fa
+
+genomes.fasta

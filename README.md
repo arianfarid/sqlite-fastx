@@ -276,8 +276,10 @@ FROM assembly;
 Pull bases 20–200 from a specific contig (FAI recommended for large genomes):
 
 ```sql
+CREATE VIRTUAL TABLE genome USING fasta('genome.fa');
+
 SELECT substr(sequence, 20, 181) AS region
-FROM fasta('genome.fa')
+FROM genome
 WHERE id = 'chr1';
 ```
 
@@ -305,8 +307,10 @@ WHERE f.gc_content > 0.5;
 ### Find sequences containing a motif
 
 ```sql
+CREATE VIRTUAL TABLE genome USING fasta('genome.fa');
+
 SELECT id, length
-FROM fasta('genome.fa')
+FROM genome
 WHERE sequence LIKE '%TATAAA%';
 ```
 

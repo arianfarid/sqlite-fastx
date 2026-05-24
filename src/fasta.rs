@@ -78,10 +78,52 @@ impl TryFrom<i32> for Columns {
     }
 }
 
-#[sqlite3_ext_vtab(EponymousModule)]
+#[sqlite3_ext_vtab(StandardModule)]
 pub struct FastaModule {
     filename: Option<String>,
     fai_path: Option<String>,
+}
+impl CreateVTab<'_> for FastaModule {
+    fn create(
+        _db: &'_ VTabConnection,
+        _aux: &'_ Self::Aux,
+        args: &[&str],
+    ) -> Result<(String, Self)> {
+        let filename = args
+            .get(3)
+            .map(|s| {
+                let s = s.trim();
+                let s = s.strip_prefix("filename=").unwrap_or(s);
+                s.trim_matches('\'').to_string()
+            })
+            .unwrap();
+        let schema = "CREATE TABLE x(
+                id TEXT,
+                description TEXT,
+                sequence TEXT,
+                length INTEGER,
+                gc_content REAL,
+                filename TEXT HIDDEN
+            )";
+
+        let fai_path = format!("{}.fai", filename);
+        let fai_path = if std::path::Path::new(&fai_path).exists() {
+            Some(fai_path)
+        } else {
+            None
+        };
+        Ok((
+            schema.to_owned(),
+            FastaModule {
+                filename: Some(filename),
+                fai_path,
+            },
+        ))
+    }
+
+    fn destroy(self) -> DisconnectResult<Self> {
+        Ok(())
+    }
 }
 impl VTab<'_> for FastaModule {
     type Aux = ();
