@@ -3,6 +3,7 @@ use sqlite3_ext::{Database, FallibleIteratorMut, FromValue};
 
 const TEST_FA: &str = "tests/fixtures/test.fa";
 const TEST_FASTQ: &str = "tests/fixtures/test.fastq";
+const TEST_FASTQ_FAI: &str = "tests/fixtures/test.fastq.fai";
 
 // Fixture records and their expected values:
 //
@@ -1051,6 +1052,50 @@ fn is_valid_dna_empty() {
 #[test]
 fn is_valid_rna_empty() {
     assert_eq!(scalar_i64(&db(), "SELECT is_valid_rna('')"), 1);
+}
+
+// --- fastq fai seek ---
+
+#[test]
+fn fastq_fai_seek_returns_correct_record() {
+    assert!(
+        std::path::Path::new(TEST_FASTQ_FAI).exists(),
+        "FAI fixture missing — run: samtools faidx {TEST_FASTQ}"
+    );
+    let db = db();
+    db.execute(
+        &format!("CREATE VIRTUAL TABLE fq_fai USING fastq('{TEST_FASTQ}')"),
+        (),
+    )
+    .unwrap();
+    // read3 is the 3rd record — a seek should land on it directly, not stream from the top
+    assert_eq!(
+        scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read3'"),
+        "ACGTTTTT"
+    );
+}
+
+#[test]
+fn fastq_fai_seek_does_not_bleed_into_adjacent_record() {
+    assert!(
+        std::path::Path::new(TEST_FASTQ_FAI).exists(),
+        "FAI fixture missing — run: samtools faidx {TEST_FASTQ}"
+    );
+    let db = db();
+    db.execute(
+        &format!("CREATE VIRTUAL TABLE fq_fai USING fastq('{TEST_FASTQ}')"),
+        (),
+    )
+    .unwrap();
+    // Only one row should come back — confirms the reader stops after the seeked record
+    assert_eq!(
+        scalar_i64(&db, "SELECT COUNT(*) FROM fq_fai WHERE id = 'read2'"),
+        1
+    );
+    assert_eq!(
+        scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read2'"),
+        "GGGG"
+    );
 }
 
 // --- n50 aggregate: empty result set ---

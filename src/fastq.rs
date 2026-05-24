@@ -26,8 +26,26 @@ impl SequenceReader for FastqSequenceReader {
         })
     }
 
-    // TODO: Add fastq fai support
-    // fn lookup_offset(fai_path: &str, id: &str) -> Option<u64> {}
+    fn lookup_offset(fai_path: &str, id: &str) -> Option<u64> {
+        use std::io::BufReader;
+        let file = File::open(fai_path).ok()?;
+        let mut reader = noodles_fastq::fai::io::Reader::new(BufReader::new(file));
+        let mut buf = String::new();
+        loop {
+            buf.clear();
+            match reader.read_record(&mut buf) {
+                Ok(0) => return None,
+                Ok(_) => {
+                    if let Ok(record) = buf.parse::<noodles_fastq::fai::Record>() {
+                        if record.name() == id {
+                            return Some(record.sequence_offset());
+                        }
+                    }
+                }
+                Err(_) => return None,
+            }
+        }
+    }
 }
 
 impl SequenceRecord for OwnedRecord {
@@ -171,9 +189,9 @@ impl VTab<'_> for FastqModule {
                 match Columns::try_from(constraint.column())
                     .map_err(|_| Error::from("column index out of range"))?
                 {
-                    #[allow(clippy::single_match)]
                     Columns::ID => match constraint.op() {
                         ConstraintOp::Like => usable.push((i, ("id", constraint.op()))),
+                        ConstraintOp::Eq => usable.push((i, ("id", constraint.op()))),
                         _ => {}
                     },
                     #[allow(clippy::single_match)]
@@ -317,6 +335,7 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
         self.rowid = 0;
         self.done = false;
         self.current = None;
+        self.exit_early = false;
         self.next()
     }
 
