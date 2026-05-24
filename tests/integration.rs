@@ -1056,8 +1056,7 @@ fn is_valid_rna_empty() {
 
 // --- fastq fai seek ---
 
-#[test]
-fn fastq_fai_seek_returns_correct_record() {
+fn fq_fai_db() -> Database {
     assert!(
         std::path::Path::new(TEST_FASTQ_FAI).exists(),
         "FAI fixture missing — run: samtools faidx {TEST_FASTQ}"
@@ -1068,29 +1067,90 @@ fn fastq_fai_seek_returns_correct_record() {
         (),
     )
     .unwrap();
+    db
+}
+
+#[test]
+fn fastq_fai_seek_returns_correct_record() {
     // read3 is the 3rd record — a seek should land on it directly, not stream from the top
     assert_eq!(
-        scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read3'"),
+        scalar_str(&fq_fai_db(), "SELECT sequence FROM fq_fai WHERE id = 'read3'"),
         "ACGTTTTT"
     );
 }
 
 #[test]
 fn fastq_fai_seek_does_not_bleed_into_adjacent_record() {
-    assert!(
-        std::path::Path::new(TEST_FASTQ_FAI).exists(),
-        "FAI fixture missing — run: samtools faidx {TEST_FASTQ}"
-    );
-    let db = db();
-    db.execute(
-        &format!("CREATE VIRTUAL TABLE fq_fai USING fastq('{TEST_FASTQ}')"),
-        (),
-    )
-    .unwrap();
+    let db = fq_fai_db();
     // Only one row should come back — confirms the reader stops after the seeked record
     assert_eq!(
         scalar_i64(&db, "SELECT COUNT(*) FROM fq_fai WHERE id = 'read2'"),
         1
+    );
+    assert_eq!(
+        scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read2'"),
+        "GGGG"
+    );
+}
+
+#[test]
+fn fastq_fai_seek_first_record() {
+    // read1 is at byte 0 — the backward scan in find_record_offset must handle hitting start-of-file
+    let db = fq_fai_db();
+    assert_eq!(
+        scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read1'"),
+        "ACGT"
+    );
+    assert_eq!(
+        scalar_i64(&db, "SELECT COUNT(*) FROM fq_fai WHERE id = 'read1'"),
+        1
+    );
+}
+
+#[test]
+fn fastq_fai_seek_last_record_preserves_lowercase() {
+    // read4 is the last record and has lowercase bases — tests boundary + case preservation
+    assert_eq!(
+        scalar_str(&fq_fai_db(), "SELECT sequence FROM fq_fai WHERE id = 'read4'"),
+        "acgtgggg"
+    );
+}
+
+#[test]
+fn fastq_fai_seek_quality_correct() {
+    // Quality string must match the seeked record exactly, not a neighbouring record's quality
+    let db = fq_fai_db();
+    assert_eq!(
+        scalar_str(&db, "SELECT quality FROM fq_fai WHERE id = 'read3'"),
+        "????????"
+    );
+    assert_eq!(
+        scalar_str(&db, "SELECT quality FROM fq_fai WHERE id = 'read1'"),
+        "IIII"
+    );
+}
+
+#[test]
+fn fastq_fai_seek_unknown_id_returns_empty() {
+    // A miss in the FAI must fall back to a full scan and return no rows, not an error
+    assert_eq!(
+        scalar_i64(&fq_fai_db(), "SELECT COUNT(*) FROM fq_fai WHERE id = 'nonexistent'"),
+        0
+    );
+}
+
+#[test]
+fn fastq_fai_sequential_seeks_reset_correctly() {
+    // Two id=Eq queries on the same table reuse the cursor; exit_early must be cleared between
+    // them or the second query immediately returns EOF.
+    let db = fq_fai_db();
+    assert_eq!(
+        scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read1'"),
+        "ACGT"
+    );
+    assert_eq!(
+        scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read4'"),
+        "acgtgggg"
     );
     assert_eq!(
         scalar_str(&db, "SELECT sequence FROM fq_fai WHERE id = 'read2'"),
