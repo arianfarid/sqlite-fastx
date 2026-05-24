@@ -16,6 +16,7 @@ bench.fastq
 !tests/fixtures/*.fa
 !tests/fixtures/*.fastq
 *.fai
+!tests/fixtures/*.fai
 
 all_sequences.fasta
 
