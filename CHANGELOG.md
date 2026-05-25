@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ### Added
 
 - `.fai` index support for FASTQ. Equality operators on ID columns will seek directly to record instead of scanning if a `.fai` file is alongside the `fastq` file.
+- `has_stop_codon(sequence)`: returns `true` if any stop codon (TAA, TAG, TGA / UAA, UAG, UGA) is present in the sequence. Reading frame agnostic.
 
 ### Breaking Changes
 

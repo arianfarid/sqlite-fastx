@@ -32,13 +32,13 @@
 - `mean_quality(quality)`: mean Phred quality score of a FASTQ quality string
 - `min_quality(quality)`: minimum Phred quality score of a FASTQ quality string
 - `base_composition(sequence)`: Per-base fractions as JSON
+- `has_stop_codon(sequence)`: True if any stop codon (TAA, TAG, TGA / UAA, UAG, UGA) is present across any reading frame
 
 #### Exposed aggregate functions:
 - `n50()`: n50 statistic of a numeric column
 
 ### Planned
-- Exposed functions: `has_stop_codon`,
-- Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`
+- Optional IUPAC codes as function parameters `is_valid_X`, `reverse_complement`
 
 #### Indexes
 - Optional indexes for fast substring queries on materialized datasets

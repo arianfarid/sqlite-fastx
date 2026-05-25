@@ -118,6 +118,15 @@ pub fn init(db: &Connection) -> Result<()> {
             ctx.set_result(comp.to_string())
         },
     )?;
+    db.create_scalar_function(
+        "has_stop_codon",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let result = has_stop_codon(seq.as_bytes());
+            ctx.set_result(result)
+        },
+    )?;
     db.create_aggregate_function::<(), N50Accumulator>(
         "n50",
         &FunctionOptions::default().set_n_args(1),

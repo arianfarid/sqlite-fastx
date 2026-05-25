@@ -150,6 +150,22 @@ pub fn base_composition(seq: &[u8]) -> BaseComposition {
     bcomp
 }
 
+pub fn has_stop_codon(seq: &[u8]) -> bool {
+    for codon in seq.windows(3) {
+        match (
+            codon[0].to_ascii_uppercase(),
+            codon[1].to_ascii_uppercase(),
+            codon[2].to_ascii_uppercase(),
+        ) {
+            (b'T' | b'U', b'A', b'A') | (b'T' | b'U', b'A', b'G') | (b'T' | b'U', b'G', b'A') => {
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 // Aggregates
 
 pub struct N50Accumulator {
@@ -605,5 +621,75 @@ mod tests {
         let bc = base_composition(b"AACCGGUU");
         let sum = bc.a + bc.c + bc.g + bc.t + bc.u;
         assert!((sum - 1.0).abs() < 1e-10);
+    }
+
+    // has_stop_codon
+    #[test]
+    fn stop_codon_empty() {
+        assert!(!has_stop_codon(b""));
+    }
+
+    #[test]
+    fn stop_codon_too_short() {
+        assert!(!has_stop_codon(b"T"));
+        assert!(!has_stop_codon(b"TA"));
+    }
+
+    #[test]
+    fn stop_codon_dna_each() {
+        assert!(has_stop_codon(b"TAA"));
+        assert!(has_stop_codon(b"TAG"));
+        assert!(has_stop_codon(b"TGA"));
+    }
+
+    #[test]
+    fn stop_codon_rna_each() {
+        assert!(has_stop_codon(b"UAA"));
+        assert!(has_stop_codon(b"UAG"));
+        assert!(has_stop_codon(b"UGA"));
+    }
+
+    #[test]
+    fn stop_codon_lowercase() {
+        assert!(has_stop_codon(b"taa"));
+        assert!(has_stop_codon(b"tag"));
+        assert!(has_stop_codon(b"tga"));
+        assert!(has_stop_codon(b"uaa"));
+        assert!(has_stop_codon(b"uag"));
+        assert!(has_stop_codon(b"uga"));
+    }
+
+    #[test]
+    fn stop_codon_at_start() {
+        assert!(has_stop_codon(b"TAAGCGCGC"));
+    }
+
+    #[test]
+    fn stop_codon_at_end() {
+        assert!(has_stop_codon(b"ATGCGCTGA"));
+    }
+
+    #[test]
+    fn stop_codon_in_middle() {
+        assert!(has_stop_codon(b"ATGCCCTAGGGG"));
+    }
+
+    #[test]
+    fn stop_codon_sliding_window_detects_offset() {
+        // TAA starts at position 1 — not on a frame boundary from 0, but windows(3) finds it
+        assert!(has_stop_codon(b"ATAAACGT"));
+    }
+
+    #[test]
+    fn stop_codon_none_present() {
+        assert!(!has_stop_codon(b"ATGCGCAAA"));
+    }
+
+    #[test]
+    fn stop_codon_near_misses() {
+        assert!(!has_stop_codon(b"TAC")); // T_A_C not a stop
+        assert!(!has_stop_codon(b"TCA")); // T_C_A not a stop
+        assert!(!has_stop_codon(b"TGG")); // T_G_G not a stop
+        assert!(!has_stop_codon(b"GAA")); // not starting with T/U
     }
 }
