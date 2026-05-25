@@ -14,7 +14,7 @@
 ### Current
 - Stream FASTA/FASTQ files without loading into memory
 - Query FASTA/FASTQ using SQL
-- `.fai` index file support for FASTA (planned for FASTQ)
+- `.fai` index file support for FASTA and FASTQ
 - Pushdown filtering on id, description, sequence, sequence length, and gc content eg (`length > ?` or `sequence LIKE '%ACGT%' or gc_content > 0.6`)
 - Pushdown filtering on FASTQ quality metrics (`mean_quality > ?`, `min_quality > ?`)
 - Gzip support: `.fa.gz` and `.fastq.gz` decompressed on the fly
@@ -41,7 +41,6 @@
 - Optional IPUAC codes as function parameters `is_valid_X`, `reverse_complement`
 
 #### Indexes
-- FASTQ `.fai` support
 - Optional indexes for fast substring queries on materialized datasets
 ---
 
@@ -220,14 +219,15 @@ Note: `OR` statements often bypass pushdown. One notable exception is for cases 
 
 ## Indexes
 
-### FAI (FASTA Index)
-`.fai` index files are automatically detected alongside FASTA files. These are used to seek directly to records when querying by exact ID:
+### FAI Index
+`.fai` index files are automatically detected alongside FASTA/FASTQ files. These are used to seek directly to records when querying by exact ID:
 
 ```sql
 SELECT * FROM seqs WHERE id = 'chr1';
+SELECT * FROM reads WHERE id = 'read1';
 ```
 
-Note: the `fai` index is treated as authoritative, and `sqlite-fastx` assumes the `.fai` and `.fasta` files are in sync.
+Note: the `fai` index is treated as authoritative, and `sqlite-fastx` assumes the `.fai` and data file are in sync.
 
 ## Cookbook
 
