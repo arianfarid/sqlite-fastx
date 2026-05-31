@@ -4,6 +4,8 @@ use sqlite3_ext::{Database, FallibleIteratorMut, FromValue};
 const TEST_FA: &str = "tests/fixtures/test.fa";
 const TEST_FASTQ: &str = "tests/fixtures/test.fastq";
 const TEST_FASTQ_FAI: &str = "tests/fixtures/test.fastq.fai";
+const TEST_BGZF_FA: &str = "tests/fixtures/sample.fa.gz";
+const TEST_BGZF_FAI: &str = "tests/fixtures/sample.fa.gz.fai";
 
 // Fixture records and their expected values:
 //
@@ -1241,6 +1243,90 @@ fn has_stop_codon_on_fasta_table() {
     // none of the fixture sequences contain a stop codon
     assert_eq!(
         scalar_i64(&fasta_db(), "SELECT COUNT(*) FROM fa WHERE has_stop_codon(sequence) = 1"),
+        0
+    );
+}
+
+// --- bgzf FASTA: streaming + future seek (Pulchroboletus rubricitrinus ITS, MF193883-MF193886) ---
+// Sequences from: Farid, Franck & Garey (2017), Czech Mycology 69(2):143-162.
+// Fixture is bgzf-compressed with a .fai alongside.
+// Currently exercises the streaming path; seek path covered once bgzf seek is implemented.
+
+fn bgzf_db() -> Database {
+    assert!(
+        std::path::Path::new(TEST_BGZF_FA).exists(),
+        "bgzf fixture missing: {TEST_BGZF_FA}"
+    );
+    assert!(
+        std::path::Path::new(TEST_BGZF_FAI).exists(),
+        "bgzf fai fixture missing: {TEST_BGZF_FAI}"
+    );
+    let db = db();
+    db.execute(
+        &format!("CREATE VIRTUAL TABLE bgzf USING fasta('{TEST_BGZF_FA}')"),
+        (),
+    )
+    .unwrap();
+    db
+}
+
+#[test]
+fn bgzf_row_count() {
+    assert_eq!(scalar_i64(&bgzf_db(), "SELECT COUNT(*) FROM bgzf"), 4);
+}
+
+#[test]
+fn bgzf_first_record_length() {
+    assert_eq!(
+        scalar_i64(&bgzf_db(), "SELECT length FROM bgzf WHERE id = 'MF193883.1'"),
+        715
+    );
+}
+
+#[test]
+fn bgzf_last_record_length() {
+    assert_eq!(
+        scalar_i64(&bgzf_db(), "SELECT length FROM bgzf WHERE id = 'MF193886.1'"),
+        732
+    );
+}
+
+#[test]
+fn bgzf_record_with_ambiguous_base() {
+    // MF193884.1 contains an N at position 4
+    assert_eq!(
+        scalar_i64(&bgzf_db(), "SELECT length FROM bgzf WHERE id = 'MF193884.1'"),
+        721
+    );
+}
+
+#[test]
+fn bgzf_conserved_its_region_matches_all() {
+    // All four ITS sequences share this conserved 5.8S/ITS2 boundary region
+    assert_eq!(
+        scalar_i64(
+            &bgzf_db(),
+            "SELECT COUNT(*) FROM bgzf WHERE sequence LIKE '%GCATCGATGAAGAACGCAGCGAATTGCGAT%'"
+        ),
+        4
+    );
+}
+
+#[test]
+fn bgzf_unknown_id_returns_empty() {
+    assert_eq!(
+        scalar_i64(&bgzf_db(), "SELECT COUNT(*) FROM bgzf WHERE id = 'nonexistent'"),
+        0
+    );
+}
+
+#[test]
+fn bgzf_sequence_no_match_returns_empty() {
+    assert_eq!(
+        scalar_i64(
+            &bgzf_db(),
+            "SELECT COUNT(*) FROM bgzf WHERE sequence LIKE '%AAAAAAAAAAAAAAAAAAAAAA%'"
+        ),
         0
     );
 }

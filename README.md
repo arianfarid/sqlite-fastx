@@ -39,6 +39,7 @@
 
 ### Planned
 - Optional IUPAC codes as function parameters `is_valid_X`, `reverse_complement`
+- bgzf seek support: `.fai` index-based record seeking for bgzf-compressed files (`.fa.gz` / `.fastq.gz` produced by `bgzip`).
 
 #### Indexes
 - Optional indexes for fast substring queries on materialized datasets

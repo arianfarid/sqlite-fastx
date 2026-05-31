@@ -33,6 +33,14 @@ impl<R: SequenceReader> SequenceCursor<R> {
         index_str: Option<&str>,
         args: &mut [&mut ValueRef],
     ) -> Result<ReadStrategy> {
+        if self
+            .fallback_filename
+            .as_deref()
+            .map_or(false, |p| p.ends_with(".gz"))
+        {
+            return Ok(ReadStrategy::Stream);
+        }
+
         let Some(descriptor) = index_str else {
             return Ok(ReadStrategy::Stream);
         };
