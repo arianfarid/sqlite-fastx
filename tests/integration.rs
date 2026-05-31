@@ -1158,6 +1158,81 @@ fn fastq_fai_sequential_seeks_reset_correctly() {
     );
 }
 
+// --- has_stop_codon scalar ---
+
+#[test]
+fn has_stop_codon_dna_taa() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('TAA')"), 1);
+}
+
+#[test]
+fn has_stop_codon_dna_tag() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('TAG')"), 1);
+}
+
+#[test]
+fn has_stop_codon_dna_tga() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('TGA')"), 1);
+}
+
+#[test]
+fn has_stop_codon_rna_uaa() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('UAA')"), 1);
+}
+
+#[test]
+fn has_stop_codon_rna_uag() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('UAG')"), 1);
+}
+
+#[test]
+fn has_stop_codon_rna_uga() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('UGA')"), 1);
+}
+
+#[test]
+fn has_stop_codon_lowercase() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('taa')"), 1);
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('tag')"), 1);
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('tga')"), 1);
+}
+
+#[test]
+fn has_stop_codon_embedded() {
+    // stop codon not at position 0
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('ACGTAA')"), 1);
+}
+
+#[test]
+fn has_stop_codon_no_stop() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('ACGT')"), 0);
+}
+
+#[test]
+fn has_stop_codon_empty() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('')"), 0);
+}
+
+#[test]
+fn has_stop_codon_too_short() {
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('TA')"), 0);
+}
+
+#[test]
+fn has_stop_codon_near_miss() {
+    // TGG is Trp, not a stop codon
+    assert_eq!(scalar_i64(&db(), "SELECT has_stop_codon('ACGTGG')"), 0);
+}
+
+#[test]
+fn has_stop_codon_on_fasta_table() {
+    // none of the fixture sequences contain a stop codon
+    assert_eq!(
+        scalar_i64(&fasta_db(), "SELECT COUNT(*) FROM fa WHERE has_stop_codon(sequence) = 1"),
+        0
+    );
+}
+
 // --- n50 aggregate: empty result set ---
 
 #[test]
