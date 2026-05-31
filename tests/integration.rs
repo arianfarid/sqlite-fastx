@@ -160,6 +160,18 @@ fn to_dna_lowercase() {
     assert_eq!(scalar_str(&db(), "SELECT to_dna('acgu')"), "acgt");
 }
 
+// --- to_rna / to_dna: no-op cases ---
+
+#[test]
+fn to_rna_already_rna() {
+    assert_eq!(scalar_str(&db(), "SELECT to_rna('ACGU')"), "ACGU");
+}
+
+#[test]
+fn to_dna_already_dna() {
+    assert_eq!(scalar_str(&db(), "SELECT to_dna('ACGT')"), "ACGT");
+}
+
 // --- reverse_complement scalar ---
 
 #[test]
