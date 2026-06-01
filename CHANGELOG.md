@@ -4,13 +4,13 @@ All notable changes to this project will be documented here.
 
 ##  0.4.1 [Unreleased]
 
+### Added
+
+- bgzf seek support for FASTA and FASTQ. `.gz` files with a `.fai` alongside are now opened via `noodles_bgzf` and use block-level seeking for `id =` queries instead of full-file scanning. 
+
 ### Fixed
 
 - Indexed `.fai` queries on `.gz` files no longer hang. The reader would attempt to seek into compressed binary data using the raw FAI offset, causing an infinite loop in the backward scan for the `>` record delimiter. `.gz` files now properly fall back to streaming.
-
-### Added
-
-- 
 
 ##  0.4.0 [2026-05-24]
 

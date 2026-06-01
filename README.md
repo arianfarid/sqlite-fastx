@@ -17,7 +17,7 @@
 - `.fai` index file support for FASTA and FASTQ
 - Pushdown filtering on id, description, sequence, sequence length, and gc content eg (`length > ?` or `sequence LIKE '%ACGT%' or gc_content > 0.6`)
 - Pushdown filtering on FASTQ quality metrics (`mean_quality > ?`, `min_quality > ?`)
-- Gzip support: `.fa.gz` and `.fastq.gz` decompressed on the fly
+- Gzip and bgzf support: `.fa.gz` and `.fastq.gz` decompressed on the fly; bgzf files (produced by `bgzip`) with a `.fai` alongside use block-level seeking for `id =` queries
 - Exposed as SQLite virtual table modules (`fasta`, `fastq`)
 
 #### Exposed scalar functions:
@@ -39,7 +39,6 @@
 
 ### Planned
 - Optional IUPAC codes as function parameters `is_valid_X`, `reverse_complement`
-- bgzf seek support: `.fai` index-based record seeking for bgzf-compressed files (`.fa.gz` / `.fastq.gz` produced by `bgzip`).
 
 #### Indexes
 - Optional indexes for fast substring queries on materialized datasets

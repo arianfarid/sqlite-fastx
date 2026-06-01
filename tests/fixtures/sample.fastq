@@ -1,0 +1,16 @@
+@read1 high quality
+ACGTACGTACGT
++
+IIIIIIIIIIII
+@read2 low quality
+GGTTGGTTGGTT
++
+!!!!!!!!!!!!
+@read3 medium quality
+AAAAACCCCCGG
++
+????????IIII
+@read4 lowercase sequence
+acgtacgtacgt
++
+IIIIIIIIIIII

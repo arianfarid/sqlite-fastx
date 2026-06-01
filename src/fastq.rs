@@ -6,6 +6,7 @@ use crate::{
     reader::{ReadStrategy, SequenceReader, SequenceRecord},
 };
 use flate2::read::GzDecoder;
+use noodles_bgzf;
 use seq_io::{fastq::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
 use std::{
@@ -100,6 +101,7 @@ impl TryFrom<i32> for Columns {
 pub struct FastqModule {
     filename: Option<String>,
     fai_path: Option<String>,
+    is_bgzf: bool,
 }
 impl CreateVTab<'_> for FastqModule {
     fn create(
@@ -132,11 +134,13 @@ impl CreateVTab<'_> for FastqModule {
         } else {
             None
         };
+        let is_bgzf = fai_path.is_some() && filename.ends_with(".gz");
         Ok((
             schema.to_owned(),
             FastqModule {
                 filename: Some(filename),
                 fai_path,
+                is_bgzf,
             },
         ))
     }
@@ -174,11 +178,13 @@ impl VTab<'_> for FastqModule {
         } else {
             None
         };
+        let is_bgzf = fai_path.is_some() && filename.ends_with(".gz");
         Ok((
             schema.to_owned(),
             FastqModule {
                 filename: Some(filename),
                 fai_path,
+                is_bgzf,
             },
         ))
     }
@@ -286,6 +292,7 @@ impl VTab<'_> for FastqModule {
             rowid: 0,
             done: false,
             exit_early: false,
+            is_bgzf: self.is_bgzf,
         })
     }
 }
@@ -308,9 +315,19 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
         let reader: Box<dyn Read> = match strategy {
             ReadStrategy::Stream => {
                 if path.ends_with(".gz") {
-                    let file = File::open(&path)
-                        .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
-                    Box::new(GzDecoder::new(file))
+                    if self.is_bgzf {
+                        Box::new(
+                            noodles_bgzf::io::indexed_reader::Builder::default()
+                                .build_from_path(&path)
+                                .map_err(|e| {
+                                    Error::from(format!("Cannot open '{}': {}", &path, e))
+                                })?,
+                        )
+                    } else {
+                        let file = File::open(&path)
+                            .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
+                        Box::new(GzDecoder::new(file))
+                    }
                 } else {
                     let file = File::open(&path)
                         .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
@@ -321,12 +338,22 @@ impl VTabCursor for SequenceCursor<FastqSequenceReader> {
                 let mut file = File::open(&path)
                     .map_err(|e| Error::from(format!("Cannot open '{}': {}", path, e)))?;
 
-                let record_offset = find_record_offset(&mut file, offset).map_err(Error::from)?;
-
-                file.seek(SeekFrom::Start(record_offset))
-                    .map_err(|e| Error::from(format!("Seek failed: {}", e)))?;
-
-                Box::new(file)
+                if self.is_bgzf {
+                    let mut indexed_reader = noodles_bgzf::io::indexed_reader::Builder::default()
+                        .build_from_path(&path)
+                        .map_err(|e| Error::from(format!("Cannot open '{}': {}", &path, e)))?;
+                    let block_voffset = (offset >> 16) << 16;
+                    indexed_reader
+                        .seek(SeekFrom::Start(block_voffset))
+                        .map_err(|e| Error::from(format!("Seek failed: {}", e)))?;
+                    Box::new(indexed_reader)
+                } else {
+                    let record_offset =
+                        find_record_offset(&mut file, offset).map_err(Error::from)?;
+                    file.seek(SeekFrom::Start(record_offset))
+                        .map_err(|e| Error::from(format!("Seek failed: {}", e)))?;
+                    Box::new(file)
+                }
             }
         };
         self.reader = Some(FastqSequenceReader {

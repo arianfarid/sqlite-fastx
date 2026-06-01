@@ -25,6 +25,7 @@ pub struct SequenceCursor<R: SequenceReader> {
     pub rowid: i64,
     pub done: bool,
     pub exit_early: bool,
+    pub is_bgzf: bool,
 }
 
 impl<R: SequenceReader> SequenceCursor<R> {
@@ -33,13 +34,13 @@ impl<R: SequenceReader> SequenceCursor<R> {
         index_str: Option<&str>,
         args: &mut [&mut ValueRef],
     ) -> Result<ReadStrategy> {
-        if self
-            .fallback_filename
-            .as_deref()
-            .map_or(false, |p| p.ends_with(".gz"))
-        {
-            return Ok(ReadStrategy::Stream);
-        }
+        // if self
+        //     .fallback_filename
+        //     .as_deref()
+        //     .map_or(false, |p| p.ends_with(".gz"))
+        // {
+        //     return Ok(ReadStrategy::Stream);
+        // }
 
         let Some(descriptor) = index_str else {
             return Ok(ReadStrategy::Stream);

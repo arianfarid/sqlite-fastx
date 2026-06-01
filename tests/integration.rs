@@ -6,6 +6,8 @@ const TEST_FASTQ: &str = "tests/fixtures/test.fastq";
 const TEST_FASTQ_FAI: &str = "tests/fixtures/test.fastq.fai";
 const TEST_BGZF_FA: &str = "tests/fixtures/sample.fa.gz";
 const TEST_BGZF_FAI: &str = "tests/fixtures/sample.fa.gz.fai";
+const TEST_BGZF_FASTQ: &str = "tests/fixtures/sample.fastq.gz";
+const TEST_BGZF_FASTQ_FAI: &str = "tests/fixtures/sample.fastq.gz.fai";
 
 // Fixture records and their expected values:
 //
@@ -1329,6 +1331,139 @@ fn bgzf_sequence_no_match_returns_empty() {
         ),
         0
     );
+}
+
+#[test]
+fn bgzf_fai_seek_middle_record_correct_sequence() {
+    // MF193884.1 is the second record — seeks past the first block, verifies correct landing
+    let seq = scalar_str(
+        &bgzf_db(),
+        "SELECT sequence FROM bgzf WHERE id = 'MF193884.1'",
+    );
+    assert!(seq.starts_with("TTCNGTAGGG"), "unexpected sequence start: {seq}");
+    assert_eq!(seq.len(), 721);
+}
+
+#[test]
+fn bgzf_fai_seek_does_not_bleed_into_adjacent_record() {
+    // Seeking to a middle record must return exactly one row with the correct id
+    let count = scalar_i64(&bgzf_db(), "SELECT COUNT(*) FROM bgzf WHERE id = 'MF193885.1'");
+    assert_eq!(count, 1);
+    let seq = scalar_str(
+        &bgzf_db(),
+        "SELECT sequence FROM bgzf WHERE id = 'MF193885.1'",
+    );
+    assert_eq!(seq.len(), 726);
+    assert!(seq.starts_with("CTTCCGTAGGT"), "unexpected sequence start: {seq}");
+}
+
+// --- bgzf FASTQ: seek + edge cases ---
+// Fixture: sample.fastq.gz (4 records, all length 12)
+//   read1  ACGTACGTACGT  quality IIIIIIIIIIII (mean 40, min 40)
+//   read2  GGTTGGTTGGTT  quality !!!!!!!!!!!!! (mean 0, min 0)
+//   read3  AAAAACCCCCGG  quality ????????IIII (mean ~33, min 30)
+//   read4  acgtacgtacgt  quality IIIIIIIIIIII (lowercase sequence)
+
+fn bgzf_fastq_db() -> Database {
+    assert!(
+        std::path::Path::new(TEST_BGZF_FASTQ).exists(),
+        "bgzf fastq fixture missing: {TEST_BGZF_FASTQ}"
+    );
+    assert!(
+        std::path::Path::new(TEST_BGZF_FASTQ_FAI).exists(),
+        "bgzf fastq fai fixture missing: {TEST_BGZF_FASTQ_FAI}"
+    );
+    let db = db();
+    db.execute(
+        &format!("CREATE VIRTUAL TABLE bgzf_fq USING fastq('{TEST_BGZF_FASTQ}')"),
+        (),
+    )
+    .unwrap();
+    db
+}
+
+#[test]
+fn bgzf_fastq_row_count() {
+    assert_eq!(scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq"), 4);
+}
+
+#[test]
+fn bgzf_fastq_seek_first_record() {
+    assert_eq!(
+        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read1'"),
+        "ACGTACGTACGT"
+    );
+}
+
+#[test]
+fn bgzf_fastq_seek_middle_record() {
+    assert_eq!(
+        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read2'"),
+        "GGTTGGTTGGTT"
+    );
+}
+
+#[test]
+fn bgzf_fastq_seek_last_record() {
+    assert_eq!(
+        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read4'"),
+        "acgtacgtacgt"
+    );
+}
+
+#[test]
+fn bgzf_fastq_seek_does_not_bleed_into_adjacent() {
+    let count = scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE id = 'read3'");
+    assert_eq!(count, 1);
+    assert_eq!(
+        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read3'"),
+        "AAAAACCCCCGG"
+    );
+}
+
+#[test]
+fn bgzf_fastq_quality_preserved_after_seek() {
+    assert_eq!(
+        scalar_str(&bgzf_fastq_db(), "SELECT quality FROM bgzf_fq WHERE id = 'read1'"),
+        "IIIIIIIIIIII"
+    );
+}
+
+#[test]
+fn bgzf_fastq_seek_unknown_id_returns_empty() {
+    assert_eq!(
+        scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE id = 'nonexistent'"),
+        0
+    );
+}
+
+#[test]
+fn bgzf_fastq_quality_filter_streaming() {
+    // mean_quality > 30 matches read1 (40), read3 (~33), read4 (40); excludes read2 (0)
+    assert_eq!(
+        scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE mean_quality > 30"),
+        3
+    );
+}
+
+#[test]
+fn bgzf_fastq_zero_quality_record() {
+    // read2 has all '!' quality (Phred 0)
+    assert_eq!(
+        scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE min_quality = 0"),
+        1
+    );
+    assert_eq!(
+        scalar_str(&bgzf_fastq_db(), "SELECT id FROM bgzf_fq WHERE min_quality = 0"),
+        "read2"
+    );
+}
+
+#[test]
+fn bgzf_fastq_lowercase_sequence_preserved_after_seek() {
+    // read4 has lowercase sequence — seek must not normalise it
+    let seq = scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read4'");
+    assert_eq!(seq, "acgtacgtacgt");
 }
 
 // --- n50 aggregate: empty result set ---
