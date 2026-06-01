@@ -205,6 +205,72 @@ fn reverse_complement_roundtrip() {
     );
 }
 
+// --- complement scalar ---
+
+#[test]
+fn complement_single_bases() {
+    assert_eq!(scalar_str(&db(), "SELECT complement('A')"), "T");
+    assert_eq!(scalar_str(&db(), "SELECT complement('T')"), "A");
+    assert_eq!(scalar_str(&db(), "SELECT complement('G')"), "C");
+    assert_eq!(scalar_str(&db(), "SELECT complement('C')"), "G");
+    assert_eq!(scalar_str(&db(), "SELECT complement('U')"), "A");
+}
+
+#[test]
+fn complement_empty() {
+    assert_eq!(scalar_str(&db(), "SELECT complement('')"), "");
+}
+
+#[test]
+fn complement_does_not_reverse() {
+    assert_eq!(scalar_str(&db(), "SELECT complement('AAAC')"), "TTTG");
+}
+
+#[test]
+fn complement_lowercase() {
+    assert_eq!(scalar_str(&db(), "SELECT complement('acgt')"), "tgca");
+}
+
+#[test]
+fn complement_mixed_case() {
+    assert_eq!(scalar_str(&db(), "SELECT complement('AcGt')"), "TgCa");
+}
+
+#[test]
+fn complement_ambiguous_passthrough() {
+    assert_eq!(scalar_str(&db(), "SELECT complement('N')"), "N");
+    assert_eq!(scalar_str(&db(), "SELECT complement('n')"), "n");
+}
+
+#[test]
+fn complement_rna() {
+    assert_eq!(scalar_str(&db(), "SELECT complement('ACGU')"), "TGCA");
+}
+
+#[test]
+fn complement_differs_from_reverse_complement() {
+    // complement('AAAC') = 'TTTG', reverse_complement('AAAC') = 'GTTT'
+    assert_ne!(
+        scalar_str(&db(), "SELECT complement('AAAC')"),
+        scalar_str(&db(), "SELECT reverse_complement('AAAC')")
+    );
+}
+
+#[test]
+fn complement_rc_roundtrip() {
+    // complement then reverse equals reverse_complement
+    assert_eq!(
+        scalar_str(
+            &db(),
+            "SELECT reverse_complement('ACGTACGT')"
+        ),
+        scalar_str(
+            &db(),
+            "SELECT complement('ACGTACGT')"
+        ).chars().rev().collect::<String>()
+    );
+}
+
 // --- is_valid_dna / is_valid_rna scalar ---
 
 #[test]

@@ -65,6 +65,15 @@ pub fn init(db: &Connection) -> Result<()> {
         },
     )?;
     db.create_scalar_function(
+        "complement",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let seq = args[0].get_str()?;
+            let seq = complement(seq.as_bytes());
+            ctx.set_result(String::from_utf8_lossy(&seq).into_owned())
+        },
+    )?;
+    db.create_scalar_function(
         "reverse_complement",
         &FunctionOptions::default().set_n_args(1),
         |ctx, args| {

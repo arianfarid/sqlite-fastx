@@ -22,6 +22,7 @@
 
 #### Exposed scalar functions:
 - `gc_content(sequence)`: GC content as a value between 0.0 and 1.0
+- `complement(sequence)`: complement of a DNA/RNA sequence
 - `reverse_complement(sequence)`: reverse complement of a DNA/RNA sequence
 - `to_rna(sequence)`: DNA -> RNA (T->U)
 - `to_dna(sequence)`: RNA -> DNA (U->T)

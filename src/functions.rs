@@ -65,6 +65,24 @@ pub fn is_valid_rna(seq: &[u8]) -> bool {
         .all(|&b| matches!(b.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'U' | b'N'))
 }
 
+pub fn complement(seq: &[u8]) -> Vec<u8> {
+    seq.iter()
+        .map(|&b| match b {
+            b'A' => b'T',
+            b'a' => b't',
+            b'G' => b'C',
+            b'g' => b'c',
+            b'T' => b'A',
+            b't' => b'a',
+            b'C' => b'G',
+            b'c' => b'g',
+            b'U' => b'A',
+            b'u' => b'a',
+            _ => b,
+        })
+        .collect()
+}
+
 pub fn reverse_complement(seq: &[u8]) -> Vec<u8> {
     seq.iter()
         .rev()
@@ -365,6 +383,58 @@ mod tests {
     #[test]
     fn reverse() {
         assert_eq!(reverse_complement(b"AGCTUagctuNn"), b"nNaagctAAGCT")
+    }
+
+    // complement
+    #[test]
+    fn complement_empty() {
+        assert_eq!(complement(b""), b"");
+    }
+
+    #[test]
+    fn complement_single_bases() {
+        assert_eq!(complement(b"A"), b"T");
+        assert_eq!(complement(b"T"), b"A");
+        assert_eq!(complement(b"G"), b"C");
+        assert_eq!(complement(b"C"), b"G");
+        assert_eq!(complement(b"U"), b"A");
+    }
+
+    #[test]
+    fn complement_lowercase() {
+        assert_eq!(complement(b"a"), b"t");
+        assert_eq!(complement(b"t"), b"a");
+        assert_eq!(complement(b"g"), b"c");
+        assert_eq!(complement(b"c"), b"g");
+        assert_eq!(complement(b"u"), b"a");
+    }
+
+    #[test]
+    fn complement_ambiguous_passthrough() {
+        assert_eq!(complement(b"N"), b"N");
+        assert_eq!(complement(b"n"), b"n");
+    }
+
+    #[test]
+    fn complement_does_not_reverse() {
+        assert_eq!(complement(b"AAAC"), b"TTTG");
+    }
+
+    #[test]
+    fn complement_mixed_case() {
+        assert_eq!(complement(b"AcGt"), b"TgCa");
+    }
+
+    #[test]
+    fn complement_rna() {
+        assert_eq!(complement(b"ACGU"), b"TGCA");
+    }
+
+    #[test]
+    fn complement_rc_equals_rev_complement() {
+        let seq = b"ACGTACGT";
+        let via_complement: Vec<u8> = complement(seq).into_iter().rev().collect();
+        assert_eq!(via_complement, reverse_complement(seq));
     }
 
     // is_valid_dna
