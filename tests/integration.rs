@@ -1206,7 +1206,7 @@ fn base_composition_equal_dna() {
 fn base_composition_empty() {
     assert_eq!(
         scalar_str(&db(), "SELECT base_composition('')"),
-        r#"{"A": 0, "C": 0, "G": 0, "T": 0, "U": 0}"#
+        r#"{"A": 0.0000, "C": 0.0000, "G": 0.0000, "T": 0.0000, "U": 0.0000}"#
     );
 }
 
