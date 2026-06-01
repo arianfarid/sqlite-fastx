@@ -42,6 +42,7 @@
 
 ### Planned
 - Optional IUPAC codes as function parameters `is_valid_X`, `reverse_complement`
+- Additional processing staistics (`dust_score`, `longest_homopolymer`, `fraction_above_quality`)
 
 #### Indexes
 - Optional indexes for fast substring queries on materialized datasets
