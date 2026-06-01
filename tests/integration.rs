@@ -314,6 +314,14 @@ fn fasta_columns() {
 }
 
 #[test]
+fn fasta_id_column_nonexistent_returns_zero_rows() {
+    assert_eq!(
+        scalar_i64(&fasta_db(), "SELECT COUNT(*) FROM fa WHERE id = 'notreal'"),
+        0
+    );
+}
+
+#[test]
 fn fasta_description_column() {
     assert_eq!(
         scalar_str(&fasta_db(), "SELECT description FROM fa WHERE id = 'seq1'"),
@@ -1090,7 +1098,10 @@ fn fq_fai_db() -> Database {
 fn fastq_fai_seek_returns_correct_record() {
     // read3 is the 3rd record — a seek should land on it directly, not stream from the top
     assert_eq!(
-        scalar_str(&fq_fai_db(), "SELECT sequence FROM fq_fai WHERE id = 'read3'"),
+        scalar_str(
+            &fq_fai_db(),
+            "SELECT sequence FROM fq_fai WHERE id = 'read3'"
+        ),
         "ACGTTTTT"
     );
 }
@@ -1127,7 +1138,10 @@ fn fastq_fai_seek_first_record() {
 fn fastq_fai_seek_last_record_preserves_lowercase() {
     // read4 is the last record and has lowercase bases — tests boundary + case preservation
     assert_eq!(
-        scalar_str(&fq_fai_db(), "SELECT sequence FROM fq_fai WHERE id = 'read4'"),
+        scalar_str(
+            &fq_fai_db(),
+            "SELECT sequence FROM fq_fai WHERE id = 'read4'"
+        ),
         "acgtgggg"
     );
 }
@@ -1150,7 +1164,10 @@ fn fastq_fai_seek_quality_correct() {
 fn fastq_fai_seek_unknown_id_returns_empty() {
     // A miss in the FAI must fall back to a full scan and return no rows, not an error
     assert_eq!(
-        scalar_i64(&fq_fai_db(), "SELECT COUNT(*) FROM fq_fai WHERE id = 'nonexistent'"),
+        scalar_i64(
+            &fq_fai_db(),
+            "SELECT COUNT(*) FROM fq_fai WHERE id = 'nonexistent'"
+        ),
         0
     );
 }
@@ -1244,7 +1261,10 @@ fn has_stop_codon_near_miss() {
 fn has_stop_codon_on_fasta_table() {
     // none of the fixture sequences contain a stop codon
     assert_eq!(
-        scalar_i64(&fasta_db(), "SELECT COUNT(*) FROM fa WHERE has_stop_codon(sequence) = 1"),
+        scalar_i64(
+            &fasta_db(),
+            "SELECT COUNT(*) FROM fa WHERE has_stop_codon(sequence) = 1"
+        ),
         0
     );
 }
@@ -1280,7 +1300,10 @@ fn bgzf_row_count() {
 #[test]
 fn bgzf_first_record_length() {
     assert_eq!(
-        scalar_i64(&bgzf_db(), "SELECT length FROM bgzf WHERE id = 'MF193883.1'"),
+        scalar_i64(
+            &bgzf_db(),
+            "SELECT length FROM bgzf WHERE id = 'MF193883.1'"
+        ),
         715
     );
 }
@@ -1288,7 +1311,10 @@ fn bgzf_first_record_length() {
 #[test]
 fn bgzf_last_record_length() {
     assert_eq!(
-        scalar_i64(&bgzf_db(), "SELECT length FROM bgzf WHERE id = 'MF193886.1'"),
+        scalar_i64(
+            &bgzf_db(),
+            "SELECT length FROM bgzf WHERE id = 'MF193886.1'"
+        ),
         732
     );
 }
@@ -1297,7 +1323,10 @@ fn bgzf_last_record_length() {
 fn bgzf_record_with_ambiguous_base() {
     // MF193884.1 contains an N at position 4
     assert_eq!(
-        scalar_i64(&bgzf_db(), "SELECT length FROM bgzf WHERE id = 'MF193884.1'"),
+        scalar_i64(
+            &bgzf_db(),
+            "SELECT length FROM bgzf WHERE id = 'MF193884.1'"
+        ),
         721
     );
 }
@@ -1317,7 +1346,10 @@ fn bgzf_conserved_its_region_matches_all() {
 #[test]
 fn bgzf_unknown_id_returns_empty() {
     assert_eq!(
-        scalar_i64(&bgzf_db(), "SELECT COUNT(*) FROM bgzf WHERE id = 'nonexistent'"),
+        scalar_i64(
+            &bgzf_db(),
+            "SELECT COUNT(*) FROM bgzf WHERE id = 'nonexistent'"
+        ),
         0
     );
 }
@@ -1340,21 +1372,30 @@ fn bgzf_fai_seek_middle_record_correct_sequence() {
         &bgzf_db(),
         "SELECT sequence FROM bgzf WHERE id = 'MF193884.1'",
     );
-    assert!(seq.starts_with("TTCNGTAGGG"), "unexpected sequence start: {seq}");
+    assert!(
+        seq.starts_with("TTCNGTAGGG"),
+        "unexpected sequence start: {seq}"
+    );
     assert_eq!(seq.len(), 721);
 }
 
 #[test]
 fn bgzf_fai_seek_does_not_bleed_into_adjacent_record() {
     // Seeking to a middle record must return exactly one row with the correct id
-    let count = scalar_i64(&bgzf_db(), "SELECT COUNT(*) FROM bgzf WHERE id = 'MF193885.1'");
+    let count = scalar_i64(
+        &bgzf_db(),
+        "SELECT COUNT(*) FROM bgzf WHERE id = 'MF193885.1'",
+    );
     assert_eq!(count, 1);
     let seq = scalar_str(
         &bgzf_db(),
         "SELECT sequence FROM bgzf WHERE id = 'MF193885.1'",
     );
     assert_eq!(seq.len(), 726);
-    assert!(seq.starts_with("CTTCCGTAGGT"), "unexpected sequence start: {seq}");
+    assert!(
+        seq.starts_with("CTTCCGTAGGT"),
+        "unexpected sequence start: {seq}"
+    );
 }
 
 // --- bgzf FASTQ: seek + edge cases ---
@@ -1384,13 +1425,19 @@ fn bgzf_fastq_db() -> Database {
 
 #[test]
 fn bgzf_fastq_row_count() {
-    assert_eq!(scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq"), 4);
+    assert_eq!(
+        scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq"),
+        4
+    );
 }
 
 #[test]
 fn bgzf_fastq_seek_first_record() {
     assert_eq!(
-        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read1'"),
+        scalar_str(
+            &bgzf_fastq_db(),
+            "SELECT sequence FROM bgzf_fq WHERE id = 'read1'"
+        ),
         "ACGTACGTACGT"
     );
 }
@@ -1398,7 +1445,10 @@ fn bgzf_fastq_seek_first_record() {
 #[test]
 fn bgzf_fastq_seek_middle_record() {
     assert_eq!(
-        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read2'"),
+        scalar_str(
+            &bgzf_fastq_db(),
+            "SELECT sequence FROM bgzf_fq WHERE id = 'read2'"
+        ),
         "GGTTGGTTGGTT"
     );
 }
@@ -1406,17 +1456,26 @@ fn bgzf_fastq_seek_middle_record() {
 #[test]
 fn bgzf_fastq_seek_last_record() {
     assert_eq!(
-        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read4'"),
+        scalar_str(
+            &bgzf_fastq_db(),
+            "SELECT sequence FROM bgzf_fq WHERE id = 'read4'"
+        ),
         "acgtacgtacgt"
     );
 }
 
 #[test]
 fn bgzf_fastq_seek_does_not_bleed_into_adjacent() {
-    let count = scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE id = 'read3'");
+    let count = scalar_i64(
+        &bgzf_fastq_db(),
+        "SELECT COUNT(*) FROM bgzf_fq WHERE id = 'read3'",
+    );
     assert_eq!(count, 1);
     assert_eq!(
-        scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read3'"),
+        scalar_str(
+            &bgzf_fastq_db(),
+            "SELECT sequence FROM bgzf_fq WHERE id = 'read3'"
+        ),
         "AAAAACCCCCGG"
     );
 }
@@ -1424,7 +1483,10 @@ fn bgzf_fastq_seek_does_not_bleed_into_adjacent() {
 #[test]
 fn bgzf_fastq_quality_preserved_after_seek() {
     assert_eq!(
-        scalar_str(&bgzf_fastq_db(), "SELECT quality FROM bgzf_fq WHERE id = 'read1'"),
+        scalar_str(
+            &bgzf_fastq_db(),
+            "SELECT quality FROM bgzf_fq WHERE id = 'read1'"
+        ),
         "IIIIIIIIIIII"
     );
 }
@@ -1432,7 +1494,10 @@ fn bgzf_fastq_quality_preserved_after_seek() {
 #[test]
 fn bgzf_fastq_seek_unknown_id_returns_empty() {
     assert_eq!(
-        scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE id = 'nonexistent'"),
+        scalar_i64(
+            &bgzf_fastq_db(),
+            "SELECT COUNT(*) FROM bgzf_fq WHERE id = 'nonexistent'"
+        ),
         0
     );
 }
@@ -1441,7 +1506,10 @@ fn bgzf_fastq_seek_unknown_id_returns_empty() {
 fn bgzf_fastq_quality_filter_streaming() {
     // mean_quality > 30 matches read1 (40), read3 (~33), read4 (40); excludes read2 (0)
     assert_eq!(
-        scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE mean_quality > 30"),
+        scalar_i64(
+            &bgzf_fastq_db(),
+            "SELECT COUNT(*) FROM bgzf_fq WHERE mean_quality > 30"
+        ),
         3
     );
 }
@@ -1450,11 +1518,17 @@ fn bgzf_fastq_quality_filter_streaming() {
 fn bgzf_fastq_zero_quality_record() {
     // read2 has all '!' quality (Phred 0)
     assert_eq!(
-        scalar_i64(&bgzf_fastq_db(), "SELECT COUNT(*) FROM bgzf_fq WHERE min_quality = 0"),
+        scalar_i64(
+            &bgzf_fastq_db(),
+            "SELECT COUNT(*) FROM bgzf_fq WHERE min_quality = 0"
+        ),
         1
     );
     assert_eq!(
-        scalar_str(&bgzf_fastq_db(), "SELECT id FROM bgzf_fq WHERE min_quality = 0"),
+        scalar_str(
+            &bgzf_fastq_db(),
+            "SELECT id FROM bgzf_fq WHERE min_quality = 0"
+        ),
         "read2"
     );
 }
@@ -1462,7 +1536,10 @@ fn bgzf_fastq_zero_quality_record() {
 #[test]
 fn bgzf_fastq_lowercase_sequence_preserved_after_seek() {
     // read4 has lowercase sequence — seek must not normalise it
-    let seq = scalar_str(&bgzf_fastq_db(), "SELECT sequence FROM bgzf_fq WHERE id = 'read4'");
+    let seq = scalar_str(
+        &bgzf_fastq_db(),
+        "SELECT sequence FROM bgzf_fq WHERE id = 'read4'",
+    );
     assert_eq!(seq, "acgtacgtacgt");
 }
 
@@ -1471,10 +1548,7 @@ fn bgzf_fastq_lowercase_sequence_preserved_after_seek() {
 #[test]
 fn n50_empty_result_set() {
     assert_eq!(
-        scalar_i64(
-            &db(),
-            "SELECT n50(x) FROM (SELECT 1 AS x) WHERE x < 0"
-        ),
+        scalar_i64(&db(), "SELECT n50(x) FROM (SELECT 1 AS x) WHERE x < 0"),
         0
     );
 }
