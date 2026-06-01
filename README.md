@@ -38,6 +38,7 @@
 
 #### Exposed aggregate functions:
 - `n50()`: n50 statistic of a numeric column
+- `base_totals()`: Per-base counts as JSON
 
 ### Planned
 - Optional IUPAC codes as function parameters `is_valid_X`, `reverse_complement`

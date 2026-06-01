@@ -373,6 +373,96 @@ fn n50_on_fasta_table() {
     assert_eq!(scalar_i64(&fasta_db(), "SELECT n50(length) FROM fa"), 8);
 }
 
+// --- base_totals aggregate ---
+
+#[test]
+fn base_totals_pure_dna() {
+    // "AACGT" -> A:2, C:1, G:1, T:1, U:0
+    assert_eq!(
+        scalar_str(
+            &db(),
+            "SELECT base_totals(column1) FROM (VALUES ('AACGT'))"
+        ),
+        r#"{"A": 2, "C": 1, "G": 1, "T": 1, "U": 0}"#
+    );
+}
+
+#[test]
+fn base_totals_accumulates_across_rows() {
+    // "AAAA" + "CCCC" -> A:4, C:4, G:0, T:0, U:0
+    assert_eq!(
+        scalar_str(
+            &db(),
+            "SELECT base_totals(column1) FROM (VALUES ('AAAA'), ('CCCC'))"
+        ),
+        r#"{"A": 4, "C": 4, "G": 0, "T": 0, "U": 0}"#
+    );
+}
+
+#[test]
+fn base_totals_rna() {
+    // U counted separately, T not present
+    assert_eq!(
+        scalar_str(
+            &db(),
+            "SELECT base_totals(column1) FROM (VALUES ('ACGU'))"
+        ),
+        r#"{"A": 1, "C": 1, "G": 1, "T": 0, "U": 1}"#
+    );
+}
+
+#[test]
+fn base_totals_n_excluded() {
+    // N does not count toward any bucket
+    assert_eq!(
+        scalar_str(
+            &db(),
+            "SELECT base_totals(column1) FROM (VALUES ('ACGTN'))"
+        ),
+        r#"{"A": 1, "C": 1, "G": 1, "T": 1, "U": 0}"#
+    );
+}
+
+#[test]
+fn base_totals_lowercase() {
+    assert_eq!(
+        scalar_str(
+            &db(),
+            "SELECT base_totals(column1) FROM (VALUES ('acgt'))"
+        ),
+        r#"{"A": 1, "C": 1, "G": 1, "T": 1, "U": 0}"#
+    );
+}
+
+#[test]
+fn base_totals_empty_row() {
+    assert_eq!(
+        scalar_str(
+            &db(),
+            "SELECT base_totals(column1) FROM (VALUES (''))"
+        ),
+        r#"{"A": 0, "C": 0, "G": 0, "T": 0, "U": 0}"#
+    );
+}
+
+#[test]
+fn base_totals_on_fasta_table() {
+    // test.fa has 8 records; just verify A count is a positive integer
+    let result = scalar_str(&fasta_db(), "SELECT base_totals(sequence) FROM fa");
+    assert!(result.contains("\"A\":"));
+    let a_val: f64 = result
+        .split("\"A\": ")
+        .nth(1)
+        .unwrap()
+        .split(',')
+        .next()
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(a_val > 0.0);
+}
+
 // --- FASTA virtual table: basic ---
 
 #[test]
@@ -1116,7 +1206,7 @@ fn base_composition_equal_dna() {
 fn base_composition_empty() {
     assert_eq!(
         scalar_str(&db(), "SELECT base_composition('')"),
-        r#"{"A": 0.0000, "C": 0.0000, "G": 0.0000, "T": 0.0000, "U": 0.0000}"#
+        r#"{"A": 0, "C": 0, "G": 0, "T": 0, "U": 0}"#
     );
 }
 

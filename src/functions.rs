@@ -117,6 +117,30 @@ pub fn max_quality(qual: &[u8]) -> i64 {
     qual.iter().map(|&b| (b - 33) as i64).max().unwrap_or(0)
 }
 
+pub struct BaseTotals {
+    pub a: i64,
+    pub c: i64,
+    pub g: i64,
+    pub t: i64,
+    pub u: i64,
+}
+impl Display for BaseTotals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        let mut sep = "";
+        for (base, val) in [
+            ("A", self.a),
+            ("C", self.c),
+            ("G", self.g),
+            ("T", self.t),
+            ("U", self.u),
+        ] {
+            write!(f, "{}\"{}\": {:?}", sep, base, val)?;
+            sep = ", ";
+        }
+        write!(f, "}}")
+    }
+}
 pub struct BaseComposition {
     pub a: f64,
     pub c: f64,
@@ -140,6 +164,27 @@ impl Display for BaseComposition {
         }
         write!(f, "}}")
     }
+}
+pub fn base_totals(seq: &[u8]) -> BaseTotals {
+    let mut bcomp = BaseTotals {
+        a: 0,
+        c: 0,
+        g: 0,
+        t: 0,
+        u: 0,
+    };
+    if seq.is_empty() {
+        return bcomp;
+    }
+    seq.iter().for_each(|&b| match &b.to_ascii_uppercase() {
+        b'A' => bcomp.a += 1,
+        b'G' => bcomp.g += 1,
+        b'T' => bcomp.t += 1,
+        b'C' => bcomp.c += 1,
+        b'U' => bcomp.u += 1,
+        _ => {}
+    });
+    bcomp
 }
 pub fn base_composition(seq: &[u8]) -> BaseComposition {
     let mut bcomp = BaseComposition {
@@ -188,6 +233,57 @@ pub fn has_stop_codon(seq: &[u8]) -> bool {
 }
 
 // Aggregates
+pub struct BaseTotalsAggregator {
+    comp: BaseTotals,
+}
+impl FromUserData<()> for BaseTotalsAggregator {
+    fn from_user_data(_: &()) -> Self {
+        BaseTotalsAggregator {
+            comp: BaseTotals {
+                a: 0,
+                c: 0,
+                g: 0,
+                t: 0,
+                u: 0,
+            },
+        }
+    }
+}
+impl AggregateFunction<()> for BaseTotalsAggregator {
+    fn step(
+        &mut self,
+        _context: &sqlite3_ext::function::Context,
+        args: &mut [&mut sqlite3_ext::ValueRef],
+    ) -> sqlite3_ext::Result<()> {
+        let seq = args[0].get_str()?;
+        let totals = base_totals(seq.as_bytes());
+        self.comp.a += totals.a;
+        self.comp.c += totals.c;
+        self.comp.g += totals.g;
+        self.comp.t += totals.t;
+        self.comp.u += totals.u;
+        Ok(())
+    }
+
+    fn value(&self, context: &sqlite3_ext::function::Context) -> sqlite3_ext::Result<()> {
+        context.set_result(self.comp.to_string())
+    }
+
+    fn inverse(
+        &mut self,
+        _context: &sqlite3_ext::function::Context,
+        args: &mut [&mut sqlite3_ext::ValueRef],
+    ) -> sqlite3_ext::Result<()> {
+        let seq = args[0].get_str()?;
+        let totals = base_totals(seq.as_bytes());
+        self.comp.a -= totals.a;
+        self.comp.c -= totals.c;
+        self.comp.g -= totals.g;
+        self.comp.t -= totals.t;
+        self.comp.u -= totals.u;
+        Ok(())
+    }
+}
 
 pub struct N50Accumulator {
     lengths: Vec<i64>,

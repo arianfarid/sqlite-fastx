@@ -150,5 +150,10 @@ pub fn init(db: &Connection) -> Result<()> {
         &FunctionOptions::default().set_n_args(1),
         (),
     )?;
+    db.create_aggregate_function::<(), BaseTotalsAggregator>(
+        "base_totals",
+        &FunctionOptions::default().set_n_args(1),
+        (),
+    )?;
     Ok(())
 }
