@@ -113,6 +113,9 @@ pub fn mean_quality(qual: &[u8]) -> f64 {
 pub fn min_quality(qual: &[u8]) -> i64 {
     qual.iter().map(|&b| (b - 33) as i64).min().unwrap_or(0)
 }
+pub fn max_quality(qual: &[u8]) -> i64 {
+    qual.iter().map(|&b| (b - 33) as i64).max().unwrap_or(0)
+}
 
 pub struct BaseComposition {
     pub a: f64,
@@ -604,6 +607,34 @@ mod tests {
     #[test]
     fn min_quality_empty() {
         assert_eq!(min_quality(b""), 0);
+    }
+
+    #[test]
+    fn max_quality_basic() {
+        // 'I' = Q40, '!' = Q0
+        assert_eq!(max_quality(b"III!III"), 40);
+    }
+
+    #[test]
+    fn max_quality_all_same() {
+        assert_eq!(max_quality(b"????"), 30);
+    }
+
+    #[test]
+    fn max_quality_single_base() {
+        // '5' = ASCII 53, Phred 20
+        assert_eq!(max_quality(b"5"), 20);
+    }
+
+    #[test]
+    fn max_quality_returns_highest() {
+        // 'I' = Q40 — highest in mixed string
+        assert_eq!(max_quality(b"++++I++++"), 40);
+    }
+
+    #[test]
+    fn max_quality_empty() {
+        assert_eq!(max_quality(b""), 0);
     }
 
     // base_composition

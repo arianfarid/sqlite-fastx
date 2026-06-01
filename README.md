@@ -32,6 +32,7 @@
 - `base_count(sequence, base)`: count occurrences of a specific base
 - `mean_quality(quality)`: mean Phred quality score of a FASTQ quality string
 - `min_quality(quality)`: minimum Phred quality score of a FASTQ quality string
+- `max_quality(quality)`: maximum Phred quality score of a FASTQ quality string
 - `base_composition(sequence)`: Per-base fractions as JSON
 - `has_stop_codon(sequence)`: True if any stop codon (TAA, TAG, TGA / UAA, UAG, UGA) is present across any reading frame
 

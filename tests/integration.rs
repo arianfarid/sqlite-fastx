@@ -320,6 +320,28 @@ fn mean_quality_mixed() {
     assert_eq!(scalar_f64(&db(), "SELECT mean_quality('!I')"), 20.0);
 }
 
+// --- max_quality scalar ---
+
+#[test]
+fn max_quality_uniform_high() {
+    assert_eq!(scalar_i64(&db(), "SELECT max_quality('IIII')"), 40);
+}
+
+#[test]
+fn max_quality_finds_maximum() {
+    assert_eq!(scalar_i64(&db(), "SELECT max_quality('!!!I')"), 40);
+}
+
+#[test]
+fn max_quality_all_low() {
+    assert_eq!(scalar_i64(&db(), "SELECT max_quality('!!!!')"), 0);
+}
+
+#[test]
+fn max_quality_empty() {
+    assert_eq!(scalar_i64(&db(), "SELECT max_quality('')"), 0);
+}
+
 // --- n50 aggregate ---
 
 #[test]

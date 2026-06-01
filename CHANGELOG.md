@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ### Added
 
 - `complement(sequence)`: generates complement of a DNA/RNA sequence.
+- `max_quality(quality)`: maximum Phred quality score of a FASTQ quality string.
 - bgzf seek support for FASTA and FASTQ. `.gz` files with a `.fai` alongside are now opened via `noodles_bgzf` and use block-level seeking for `id =` queries instead of full-file scanning. 
 
 ### Fixed

@@ -110,6 +110,15 @@ pub fn init(db: &Connection) -> Result<()> {
         },
     )?;
     db.create_scalar_function(
+        "max_quality",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let quality = args[0].get_str()?;
+            let valid = max_quality(quality.as_bytes());
+            ctx.set_result(valid)
+        },
+    )?;
+    db.create_scalar_function(
         "mean_quality",
         &FunctionOptions::default().set_n_args(1),
         |ctx, args| {
