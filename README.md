@@ -35,6 +35,7 @@
 - `max_quality(quality)`: maximum Phred quality score of a FASTQ quality string
 - `base_composition(sequence)`: Per-base fractions as JSON
 - `has_stop_codon(sequence)`: True if any stop codon (TAA, TAG, TGA / UAA, UAG, UGA) is present across any reading frame
+- `gap(n)`: returns a string of `n` gap characters (`-`)
 
 #### Exposed aggregate functions:
 - `n50()`: n50 statistic of a numeric column

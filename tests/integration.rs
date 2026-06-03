@@ -1730,3 +1730,32 @@ fn n50_empty_result_set() {
         0
     );
 }
+
+// --- gap scalar ---
+
+#[test]
+fn gap_basic() {
+    assert_eq!(scalar_str(&db(), "SELECT gap(5)"), "-----");
+}
+
+#[test]
+fn gap_zero() {
+    assert_eq!(scalar_str(&db(), "SELECT gap(0)"), "");
+}
+
+#[test]
+fn gap_negative_clamped_to_empty() {
+    assert_eq!(scalar_str(&db(), "SELECT gap(-3)"), "");
+}
+
+#[test]
+fn gap_one() {
+    assert_eq!(scalar_str(&db(), "SELECT gap(1)"), "-");
+}
+
+#[test]
+fn gap_length_matches_n() {
+    let result = scalar_str(&db(), "SELECT gap(10)");
+    assert_eq!(result.len(), 10);
+    assert!(result.chars().all(|c| c == '-'));
+}

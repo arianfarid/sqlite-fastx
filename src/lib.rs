@@ -145,6 +145,14 @@ pub fn init(db: &Connection) -> Result<()> {
             ctx.set_result(result)
         },
     )?;
+    db.create_scalar_function(
+        "gap",
+        &FunctionOptions::default().set_n_args(1),
+        |ctx, args| {
+            let n = args[0].get_i64().max(0) as usize;
+            ctx.set_result("-".repeat(n))
+        },
+    )?;
     db.create_aggregate_function::<(), N50Accumulator>(
         "n50",
         &FunctionOptions::default().set_n_args(1),

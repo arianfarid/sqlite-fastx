@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here.
 
+##  0.4.2 [Unreleased]
+
+### Added
+
+- `gap(n)`: returns a string of `n` gap characters (`-`). useful for constructing MSA supermatrices from aligned FASTA files.
+
 ##  0.4.1 [2026-05-31]
 
 ### Added
