@@ -122,8 +122,8 @@ pub fn longest_homopolymer(seq: &[u8]) -> u64 {
     let mut longest: u64 = 0;
     let mut rec: u64 = 0;
     seq.iter().for_each(|&b| {
-        if b != last_base {
-            last_base = b;
+        if b.to_ascii_uppercase() != last_base {
+            last_base = b.to_ascii_uppercase();
             rec = 1;
         } else {
             rec += 1;
@@ -920,5 +920,40 @@ mod tests {
     #[test]
     fn longest_homopolymer_handles_empty() {
         assert_eq!(longest_homopolymer(b""), 0);
+    }
+
+    #[test]
+    fn longest_homopolymer_single_base() {
+        assert_eq!(longest_homopolymer(b"A"), 1);
+    }
+
+    #[test]
+    fn longest_homopolymer_all_same() {
+        assert_eq!(longest_homopolymer(b"AAAA"), 4);
+    }
+
+    #[test]
+    fn longest_homopolymer_no_runs() {
+        assert_eq!(longest_homopolymer(b"ACGT"), 1);
+    }
+
+    #[test]
+    fn longest_homopolymer_run_at_start() {
+        assert_eq!(longest_homopolymer(b"AAACGT"), 3);
+    }
+
+    #[test]
+    fn longest_homopolymer_run_at_end() {
+        assert_eq!(longest_homopolymer(b"ACGTAAA"), 3);
+    }
+
+    #[test]
+    fn longest_homopolymer_lowercase() {
+        assert_eq!(longest_homopolymer(b"aaacgt"), 3);
+    }
+
+    #[test]
+    fn longest_homopolymer_mixed_case() {
+        assert_eq!(longest_homopolymer(b"bAAAaaab"), 6);
     }
 }
