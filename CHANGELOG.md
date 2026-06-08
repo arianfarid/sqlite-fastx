@@ -6,7 +6,8 @@ All notable changes to this project will be documented here.
 
 ### Added
 
-- `gap(n)`: returns a string of `n` gap characters (`-`). useful for constructing MSA supermatrices from aligned FASTA files.
+- `gap(n)`: returns a string of `n` gap characters (`-`), useful for constructing MSA supermatrices from aligned FASTA files.
+- `longest_homopolymer(sequence)`: length of the longest homopolymer run in a sequence, case-insensitive.
 
 ##  0.4.1 [2026-05-31]
 

@@ -36,6 +36,7 @@
 - `base_composition(sequence)`: Per-base fractions as JSON
 - `has_stop_codon(sequence)`: True if any stop codon (TAA, TAG, TGA / UAA, UAG, UGA) is present across any reading frame
 - `gap(n)`: returns a string of `n` gap characters (`-`)
+- `longest_homopolymer(sequence)`: length of the longest homopolymer run, case-insensitive
 
 #### Exposed aggregate functions:
 - `n50()`: n50 statistic of a numeric column
@@ -43,7 +44,7 @@
 
 ### Planned
 - Optional IUPAC codes as function parameters `is_valid_X`, `reverse_complement`
-- Additional processing staistics (e.g., `dust_score`, `longest_homopolymer`, `fraction_above_quality`)
+- Additional processing staistics (e.g., `dust_score`, `fraction_above_quality`)
 
 #### Indexes
 - Optional indexes for fast substring queries on materialized datasets
