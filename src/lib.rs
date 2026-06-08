@@ -159,7 +159,7 @@ pub fn init(db: &Connection) -> Result<()> {
         |ctx, args| {
             let seq = args[0].get_str()?;
             let comp = longest_homopolymer(seq.as_bytes());
-            ctx.set_result(comp.to_string())
+            ctx.set_result(comp as i64)
         },
     )?;
     db.create_aggregate_function::<(), N50Accumulator>(
