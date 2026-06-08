@@ -1759,3 +1759,48 @@ fn gap_length_matches_n() {
     assert_eq!(result.len(), 10);
     assert!(result.chars().all(|c| c == '-'));
 }
+
+// --- longest_homopolymer scalar ---
+
+#[test]
+fn longest_homopolymer_basic() {
+    assert_eq!(scalar_i64(&db(), "SELECT longest_homopolymer('ACCCGT')"), 3);
+}
+
+#[test]
+fn longest_homopolymer_empty() {
+    assert_eq!(scalar_i64(&db(), "SELECT longest_homopolymer('')"), 0);
+}
+
+#[test]
+fn longest_homopolymer_no_run() {
+    assert_eq!(scalar_i64(&db(), "SELECT longest_homopolymer('ACGT')"), 1);
+}
+
+#[test]
+fn longest_homopolymer_all_same() {
+    assert_eq!(scalar_i64(&db(), "SELECT longest_homopolymer('AAAA')"), 4);
+}
+
+#[test]
+fn longest_homopolymer_case_insensitive() {
+    assert_eq!(scalar_i64(&db(), "SELECT longest_homopolymer('AAAaaa')"), 6);
+}
+
+#[test]
+fn longest_homopolymer_returns_integer() {
+    // verify result type is INTEGER not TEXT so numeric comparisons work
+    assert_eq!(
+        scalar_i64(&db(), "SELECT typeof(longest_homopolymer('ACCCGT')) = 'integer'"),
+        1
+    );
+}
+
+#[test]
+fn longest_homopolymer_on_fasta_table() {
+    let max = scalar_i64(
+        &fasta_db(),
+        "SELECT max(longest_homopolymer(sequence)) FROM fa",
+    );
+    assert!(max >= 1);
+}
