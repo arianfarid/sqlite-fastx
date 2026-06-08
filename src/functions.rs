@@ -117,6 +117,22 @@ pub fn max_quality(qual: &[u8]) -> i64 {
     qual.iter().map(|&b| (b - 33) as i64).max().unwrap_or(0)
 }
 
+pub fn longest_homopolymer(seq: &[u8]) -> u64 {
+    let mut last_base: u8 = 0u8;
+    let mut longest: u64 = 0;
+    let mut rec: u64 = 0;
+    seq.iter().for_each(|&b| {
+        if b != last_base {
+            last_base = b;
+            rec = 1;
+        } else {
+            rec += 1;
+        }
+        longest = std::cmp::max(longest, rec)
+    });
+    longest
+}
+
 pub struct BaseTotals {
     pub a: i64,
     pub c: i64,
@@ -888,5 +904,21 @@ mod tests {
         assert!(!has_stop_codon(b"TCA")); // T_C_A not a stop
         assert!(!has_stop_codon(b"TGG")); // T_G_G not a stop
         assert!(!has_stop_codon(b"GAA")); // not starting with T/U
+    }
+
+    // longest homopolymer
+    #[test]
+    fn longest_homopolymer_captured() {
+        assert_eq!(longest_homopolymer(b"AGAAGGCTCCTCTATTT"), 3);
+        assert_eq!(longest_homopolymer(b"AGAAGGCTCCCCACTCTATTT"), 4);
+        assert_eq!(
+            longest_homopolymer(b"AGACTGACTGGGGATGCAATTGGCGATACGGCCC"),
+            4
+        );
+    }
+
+    #[test]
+    fn longest_homopolymer_handles_empty() {
+        assert_eq!(longest_homopolymer(b""), 0);
     }
 }
