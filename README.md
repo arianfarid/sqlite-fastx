@@ -46,6 +46,9 @@
 - Optional IUPAC codes as function parameters `is_valid_X`, `reverse_complement`
 - Additional processing staistics (e.g., `dust_score`, `fraction_above_quality`)
 
+#### Distribution
+- `pip install sqlite-fastx` (PyPI) and `npm install sqlite-fastx` (npm) with auto-resolved platform binaries
+
 #### Indexes
 - Optional indexes for fast substring queries on materialized datasets
 ---
