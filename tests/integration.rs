@@ -342,6 +342,72 @@ fn max_quality_empty() {
     assert_eq!(scalar_i64(&db(), "SELECT max_quality('')"), 0);
 }
 
+// --- fraction_above_quality scalar ---
+
+#[test]
+fn fraction_above_quality_all_above() {
+    // IIII = Q40, all strictly above Q30
+    assert_eq!(
+        scalar_f64(&db(), "SELECT fraction_above_quality('IIII', 30)"),
+        1.0
+    );
+}
+
+#[test]
+fn fraction_above_quality_none_above() {
+    // !!!! = Q0, none above Q30
+    assert_eq!(
+        scalar_f64(&db(), "SELECT fraction_above_quality('!!!!', 30)"),
+        0.0
+    );
+}
+
+#[test]
+fn fraction_above_quality_half() {
+    // II!! → 2 of 4 above Q30
+    assert_eq!(
+        scalar_f64(&db(), "SELECT fraction_above_quality('II!!', 30)"),
+        0.5
+    );
+}
+
+#[test]
+fn fraction_above_quality_threshold_inclusive() {
+    // ???? = Q30 exactly, counted by the Q30 (>=) metric
+    assert_eq!(
+        scalar_f64(&db(), "SELECT fraction_above_quality('????', 30)"),
+        1.0
+    );
+}
+
+#[test]
+fn fraction_above_quality_empty() {
+    assert_eq!(
+        scalar_f64(&db(), "SELECT fraction_above_quality('', 30)"),
+        0.0
+    );
+}
+
+#[test]
+fn fraction_above_quality_on_fastq_table() {
+    // read4: IIII???? → Q40 x4, Q30 x4 → all 8 bases are >= Q30
+    assert_eq!(
+        scalar_f64(
+            &fastq_db(),
+            "SELECT fraction_above_quality(quality, 30) FROM fq WHERE id = 'read4'"
+        ),
+        1.0
+    );
+    // read3: ???????? → all Q30, none reach Q40
+    assert_eq!(
+        scalar_f64(
+            &fastq_db(),
+            "SELECT fraction_above_quality(quality, 40) FROM fq WHERE id = 'read3'"
+        ),
+        0.0
+    );
+}
+
 // --- n50 aggregate ---
 
 #[test]

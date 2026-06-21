@@ -119,6 +119,16 @@ pub fn init(db: &Connection) -> Result<()> {
         },
     )?;
     db.create_scalar_function(
+        "fraction_above_quality",
+        &FunctionOptions::default().set_n_args(2),
+        |ctx, args| {
+            let quality = args[0].get_str()?.to_string();
+            let val = args[1].get_i64();
+            let valid = fraction_above_quality(quality.as_bytes(), val);
+            ctx.set_result(valid)
+        },
+    )?;
+    db.create_scalar_function(
         "mean_quality",
         &FunctionOptions::default().set_n_args(1),
         |ctx, args| {

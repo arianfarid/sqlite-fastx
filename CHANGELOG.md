@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented here.
 
+##  0.4.3 [2026-06-11]
+
+### Added
+
+- `fraction_above_quality`: returns percentage at or above a defined threshold.
+
 ##  0.4.2 [2026-06-11]
 
 ### Added

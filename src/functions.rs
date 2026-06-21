@@ -117,6 +117,14 @@ pub fn max_quality(qual: &[u8]) -> i64 {
     qual.iter().map(|&b| (b - 33) as i64).max().unwrap_or(0)
 }
 
+pub fn fraction_above_quality(qual: &[u8], q: i64) -> f64 {
+    if qual.is_empty() {
+        return 0.0;
+    }
+    let above = qual.iter().filter(|&&b| (b - 33) as i64 >= q).count();
+    above as f64 / qual.len() as f64
+}
+
 pub fn longest_homopolymer(seq: &[u8]) -> u64 {
     let mut last_base: u8 = 0u8;
     let mut longest: u64 = 0;
@@ -747,6 +755,39 @@ mod tests {
     #[test]
     fn max_quality_empty() {
         assert_eq!(max_quality(b""), 0);
+    }
+
+    // fraction_above_quality
+    #[test]
+    fn fraction_above_quality_all_above() {
+        // IIII = Q40, all at or above Q30
+        assert_eq!(fraction_above_quality(b"IIII", 30), 1.0);
+    }
+
+    #[test]
+    fn fraction_above_quality_none_above() {
+        // !!!! = Q0, none reach Q30
+        assert_eq!(fraction_above_quality(b"!!!!", 30), 0.0);
+    }
+
+    #[test]
+    fn fraction_above_quality_half() {
+        // II!! = Q40,Q40,Q0,Q0 → 2 of 4 at or above Q30
+        assert_eq!(fraction_above_quality(b"II!!", 30), 0.5);
+    }
+
+    #[test]
+    fn fraction_above_quality_threshold_is_inclusive() {
+        // ???? = Q30 exactly; counts as the Q30 (>=) metric
+        assert_eq!(fraction_above_quality(b"????", 30), 1.0);
+        // one notch higher than every base excludes them all
+        assert_eq!(fraction_above_quality(b"????", 31), 0.0);
+    }
+
+    #[test]
+    fn fraction_above_quality_empty() {
+        // empty input must not divide by zero
+        assert_eq!(fraction_above_quality(b"", 30), 0.0);
     }
 
     // base_composition
