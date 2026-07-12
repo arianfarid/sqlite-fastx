@@ -14,7 +14,14 @@ Persist records to sqlite shadow tables. At `best_index` call, persisted record 
 
 `idxNum` can be used to encode and enforce multimodal strategies. For example, `idxNum = 0` may refer to existing `sqlite-fastx` scan strategies, while `idxNum = 1` can refer to shadow table references.
 
-Indexing is opt-in via a module argument, e.g. `CREATE VIRTUAL TABLE seqs USING fasta(file.fa, record_index='id,length,gc_content')`. The default column set (when `record_index` is passed without a value) is `id`, `length`, and `gc_content`. The sequence/record offset is always stored so the reader can seek. `description` can be added explicitly but is excluded from the default because a B-tree index on it cannot serve `LIKE '%x%'` (substring) predicates — only equality and prefix (`LIKE 'x%'`) and thus carries little benefit for its cost.
+Indexing is opt-in via a module argument, e.g. `CREATE VIRTUAL TABLE seqs USING fasta(file.fa, record_index='id,length,gc_content')`. The default column set (when `record_index` is passed without a value) is `id`, `length`, and `gc_content`. `description` can be added explicitly but is excluded from the default because a B-tree index on it cannot serve `LIKE '%x%'` (substring) predicates — only equality and prefix (`LIKE 'x%'`) and thus carries little benefit for its cost.
+
+The record offset (`header_offset`) is stored only for uncompressed FASTA/FASTQ, where a seq_io stream position is a real, seekable file byte offset. For any compressed input it is `NULL`:
+
+- Plain gzip has no random access, so there is no per-record offset to store. These inputs always stream.
+- bgzf is seekable, but already requires a `.fai` that maps `id → offset`. The seek is served there, not duplicated in `_records`.
+
+This fixes the division of labor: `_records` owns the filterable/covering columns (id, length, gc — answering `WHERE length > X` and metadata-only `SELECT`s without touching the file), and the `.fai` owns the seek. `header_offset` is therefore a pure optimization for the uncompressed, no-`.fai` case, not a universal requirement.
 
 ## Consequences
 
