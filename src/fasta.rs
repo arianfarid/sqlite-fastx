@@ -10,7 +10,7 @@ use seq_io::{fasta::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
 use std::{
     fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::{BufReader, Read, Seek, SeekFrom},
 };
 
 pub struct FastaSequenceReader {
@@ -145,7 +145,7 @@ impl CreateVTab<'_> for FastaModule {
         )?;
         db.execute(
             &format!(
-                "CREATE TABLE {table_name}_records (id TEXT, description TEXT, length INTEGER, gc_content REAL)"
+                "CREATE TABLE {table_name}_records (id TEXT, description TEXT, length INTEGER, gc_content REAL, header_offset INTEGER)"
             ),
             (),
         )?;
@@ -170,7 +170,44 @@ impl CreateVTab<'_> for FastaModule {
         )?;
 
         if records_index != "false" {
-            // Todo: parse, insert records
+            let mut create_records_stmt = db.prepare(&format!(
+                "INSERT INTO {table_name}_records (id, description, length, gc_content, header_offset) VALUES (?,?,?,?,?)"
+            ))?;
+            let is_compressed = filename.ends_with(".gz");
+            let inner: Box<dyn Read> = if is_compressed {
+                let file = File::open(&filename)
+                    .map_err(|e| Error::from(format!("Cannot open '{}': {}", filename, e)))?;
+                Box::new(GzDecoder::new(BufReader::new(file)))
+            } else {
+                let file = File::open(&filename)
+                    .map_err(|e| Error::from(format!("Cannot open '{}': {}", filename, e)))?;
+                Box::new(BufReader::new(file))
+            };
+            let mut fasta_reader = seq_io::fasta::Reader::new(inner);
+
+            while let Some(result) = fasta_reader.next() {
+                let record = result
+                    .map_err(|e| Error::from(e.to_string()))?
+                    .to_owned_record();
+                let header_offset: Option<i64> = if is_compressed {
+                    None
+                } else {
+                    fasta_reader.position().map(|p| p.byte() as i64)
+                };
+                let id = String::from_utf8_lossy(record.id_bytes());
+                let desc = record
+                    .desc_bytes()
+                    .map(String::from_utf8_lossy)
+                    .unwrap_or_default();
+                let gc = compute_gc(record.sequence_bytes());
+                create_records_stmt.execute(params!(
+                    id.as_ref(),
+                    desc.as_ref(),
+                    record.seq().len() as i64,
+                    gc,
+                    header_offset
+                ))?;
+            }
 
             if records_index == "true" {
                 for col in DEFAULT_RECORD_INDEXES {

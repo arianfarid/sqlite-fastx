@@ -81,6 +81,50 @@ fn try_query(db: &Database, sql: &str) -> sqlite3_ext::Result<()> {
     Ok(())
 }
 
+fn rows_i64(db: &Database, sql: &str) -> Vec<i64> {
+    let mut stmt = db.prepare(sql).unwrap();
+    let rows = stmt.query(()).unwrap();
+    let mut out = vec![];
+    while let Some(row) = rows.next().unwrap() {
+        out.push(row[0].get_i64());
+    }
+    out
+}
+
+fn rows_opt_i64(db: &Database, sql: &str) -> Vec<Option<i64>> {
+    let mut stmt = db.prepare(sql).unwrap();
+    let rows = stmt.query(()).unwrap();
+    let mut out = vec![];
+    while let Some(row) = rows.next().unwrap() {
+        out.push(if row[0].is_null() {
+            None
+        } else {
+            Some(row[0].get_i64())
+        });
+    }
+    out
+}
+
+fn rows_str(db: &Database, sql: &str) -> Vec<String> {
+    let mut stmt = db.prepare(sql).unwrap();
+    let rows = stmt.query(()).unwrap();
+    let mut out = vec![];
+    while let Some(row) = rows.next().unwrap() {
+        out.push(row[0].get_str().unwrap().to_string());
+    }
+    out
+}
+
+/// Index names on a `{table}_records` shadow table, sorted.
+fn record_index_names(db: &Database, table: &str) -> Vec<String> {
+    rows_str(
+        db,
+        &format!(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='{table}_records' ORDER BY name"
+        ),
+    )
+}
+
 // --- gc_content scalar ---
 
 #[test]
@@ -2042,4 +2086,243 @@ fn fastq_meta_tracks_file_update_on_reconnect() {
 
     let _ = std::fs::remove_file(&fq_path);
     let _ = std::fs::remove_file(&db_path);
+}
+
+// --- FASTA record index: population ---
+
+fn fasta_records_db(arg: &str) -> Database {
+    let db = db();
+    db.execute(
+        &format!("CREATE VIRTUAL TABLE fa USING fasta('{TEST_FA}'{arg})"),
+        (),
+    )
+    .unwrap();
+    db
+}
+
+#[test]
+fn fasta_records_row_count_matches_file() {
+    // record_index=true populates one _records row per FASTA record
+    let db = fasta_records_db(", record_index=true");
+    assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fa_records"), 8);
+}
+
+#[test]
+fn fasta_records_absent_creates_empty_table_no_indexes() {
+    // Without record_index the shadow table exists but is unpopulated and unindexed.
+    let db = fasta_records_db("");
+    assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fa_records"), 0);
+    assert!(record_index_names(&db, "fa").is_empty());
+}
+
+#[test]
+fn fasta_records_column_values() {
+    let db = fasta_records_db(", record_index=true");
+    // seq1: ACGT, len 4, gc 0.5, desc "four bases half gc"
+    assert_eq!(
+        scalar_i64(&db, "SELECT length FROM fa_records WHERE id = 'seq1'"),
+        4
+    );
+    assert_eq!(
+        scalar_f64(&db, "SELECT gc_content FROM fa_records WHERE id = 'seq1'"),
+        0.5
+    );
+    assert_eq!(
+        scalar_str(&db, "SELECT description FROM fa_records WHERE id = 'seq1'"),
+        "four bases half gc"
+    );
+    // seq3: pure GC → gc 1.0
+    assert_eq!(
+        scalar_f64(&db, "SELECT gc_content FROM fa_records WHERE id = 'seq3'"),
+        1.0
+    );
+    // seq8: ACGNNNTT → 2 GC over length 8 (N counts in denominator) → 0.25
+    assert_eq!(
+        scalar_i64(&db, "SELECT length FROM fa_records WHERE id = 'seq8'"),
+        8
+    );
+    assert_eq!(
+        scalar_f64(&db, "SELECT gc_content FROM fa_records WHERE id = 'seq8'"),
+        0.25
+    );
+}
+
+#[test]
+fn fasta_records_description_populated_even_when_not_indexed() {
+    // description is opt-in for indexing, but always stored.
+    let db = fasta_records_db(", record_index='id,length'");
+    assert_eq!(
+        scalar_str(&db, "SELECT description FROM fa_records WHERE id = 'seq7'"),
+        "lowercase sequence mixed case id"
+    );
+}
+
+#[test]
+fn fasta_records_header_offsets_ascending_and_seekable() {
+    // Uncompressed input: every record gets a non-null byte offset, first at 0, strictly ascending.
+    let db = fasta_records_db(", record_index=true");
+    let offs = rows_opt_i64(&db, "SELECT header_offset FROM fa_records ORDER BY rowid");
+    assert_eq!(offs.len(), 8);
+    assert!(offs.iter().all(|o| o.is_some()), "offsets: {offs:?}");
+    let offs: Vec<i64> = offs.into_iter().map(|o| o.unwrap()).collect();
+    assert_eq!(offs[0], 0);
+    assert!(
+        offs.windows(2).all(|w| w[1] > w[0]),
+        "offsets not strictly ascending: {offs:?}"
+    );
+}
+
+// --- FASTA record index: index creation ---
+
+#[test]
+fn fasta_records_default_indexes() {
+    // record_index=true indexes the default columns (id, length, gc_content) but NOT description.
+    let db = fasta_records_db(", record_index=true");
+    assert_eq!(
+        record_index_names(&db, "fa"),
+        vec![
+            "fa_records_gc_content_idx",
+            "fa_records_id_idx",
+            "fa_records_length_idx",
+        ]
+    );
+}
+
+#[test]
+fn fasta_records_explicit_columns() {
+    // Only the explicitly requested columns get an index.
+    let db = fasta_records_db(", record_index='id,description'");
+    assert_eq!(
+        record_index_names(&db, "fa"),
+        vec!["fa_records_description_idx", "fa_records_id_idx"]
+    );
+}
+
+#[test]
+fn fasta_records_malformed_column_errors() {
+    // An unknown column in the list fails the CREATE.
+    let db = db();
+    assert!(
+        db.execute(
+            &format!("CREATE VIRTUAL TABLE fa USING fasta('{TEST_FA}', record_index='id,bogus')"),
+            (),
+        )
+        .is_err()
+    );
+}
+
+// --- FASTQ record index: population ---
+
+fn fastq_records_db(arg: &str) -> Database {
+    let db = db();
+    db.execute(
+        &format!("CREATE VIRTUAL TABLE fq USING fastq('{TEST_FASTQ}'{arg})"),
+        (),
+    )
+    .unwrap();
+    db
+}
+
+#[test]
+fn fastq_records_row_count_matches_file() {
+    let db = fastq_records_db(", record_index=true");
+    assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fq_records"), 4);
+}
+
+#[test]
+fn fastq_records_absent_creates_empty_table_no_indexes() {
+    let db = fastq_records_db("");
+    assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fq_records"), 0);
+    assert!(record_index_names(&db, "fq").is_empty());
+}
+
+#[test]
+fn fastq_records_column_values() {
+    let db = fastq_records_db(", record_index=true");
+    // read1: ACGT, len 4, gc 0.5, desc "high quality"
+    assert_eq!(
+        scalar_i64(&db, "SELECT length FROM fq_records WHERE id = 'read1'"),
+        4
+    );
+    assert_eq!(
+        scalar_f64(&db, "SELECT gc_content FROM fq_records WHERE id = 'read1'"),
+        0.5
+    );
+    assert_eq!(
+        scalar_str(&db, "SELECT description FROM fq_records WHERE id = 'read1'"),
+        "high quality"
+    );
+    // read4: acgtgggg → gc 0.75, len 8, lowercase preserved in id lookup
+    assert_eq!(
+        scalar_f64(&db, "SELECT gc_content FROM fq_records WHERE id = 'read4'"),
+        0.75
+    );
+    assert_eq!(
+        scalar_i64(&db, "SELECT length FROM fq_records WHERE id = 'read4'"),
+        8
+    );
+}
+
+#[test]
+fn fastq_records_header_offsets_ascending() {
+    let db = fastq_records_db(", record_index=true");
+    let offs = rows_opt_i64(&db, "SELECT header_offset FROM fq_records ORDER BY rowid");
+    assert_eq!(offs.len(), 4);
+    assert!(offs.iter().all(|o| o.is_some()), "offsets: {offs:?}");
+    let offs: Vec<i64> = offs.into_iter().map(|o| o.unwrap()).collect();
+    assert_eq!(offs[0], 0);
+    assert!(
+        offs.windows(2).all(|w| w[1] > w[0]),
+        "offsets not strictly ascending: {offs:?}"
+    );
+}
+
+#[test]
+fn fastq_records_default_indexes() {
+    let db = fastq_records_db(", record_index=true");
+    assert_eq!(
+        record_index_names(&db, "fq"),
+        vec![
+            "fq_records_gc_content_idx",
+            "fq_records_id_idx",
+            "fq_records_length_idx",
+        ]
+    );
+}
+
+#[test]
+fn fastq_records_malformed_column_errors() {
+    let db = db();
+    assert!(
+        db.execute(
+            &format!("CREATE VIRTUAL TABLE fq USING fastq('{TEST_FASTQ}', record_index='length,nope')"),
+            (),
+        )
+        .is_err()
+    );
+}
+
+// --- record index: values agree with the scan path ---
+
+#[test]
+fn fasta_records_length_agrees_with_scan() {
+    let db = fasta_records_db(", record_index=true");
+    // The _records length column must match what the virtual table reports per id.
+    let from_records = rows_i64(&db, "SELECT length FROM fa_records ORDER BY id");
+    let from_scan = rows_i64(&db, "SELECT length FROM fa ORDER BY id");
+    assert_eq!(from_records, from_scan);
+}
+
+#[test]
+fn fastq_records_gc_agrees_with_scan() {
+    let db = fastq_records_db(", record_index=true");
+    let from_records = rows_str(
+        &db,
+        "SELECT printf('%.4f', gc_content) FROM fq_records ORDER BY id",
+    );
+    let from_scan = rows_str(
+        &db,
+        "SELECT printf('%.4f', gc_content) FROM fq ORDER BY id",
+    );
+    assert_eq!(from_records, from_scan);
 }

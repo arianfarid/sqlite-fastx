@@ -10,7 +10,7 @@ use seq_io::{fastq::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
 use std::{
     fs::File,
-    io::{Read, Seek, SeekFrom},
+    io::{BufReader, Read, Seek, SeekFrom},
 };
 
 pub struct FastqSequenceReader {
@@ -101,12 +101,17 @@ pub struct FastqModule {
     fai_path: Option<String>,
     is_bgzf: bool,
 }
+const ALLOWED_RECORD_COLUMNS: &[&str] = &["id", "description", "length", "gc_content"];
+const DEFAULT_RECORD_INDEXES: &[&str] = &["id", "length", "gc_content"];
+
 impl CreateVTab<'_> for FastqModule {
+    const SHADOW_NAMES: &'static [&'static str] = &["meta", "records"];
     fn create(
         db: &'_ VTabConnection,
         _aux: &'_ Self::Aux,
         args: &[&str],
     ) -> Result<(String, Self)> {
+        let table_name = args.get(2).ok_or("missing table name")?;
         let filename = args
             .get(3)
             .map(|s| {
@@ -115,6 +120,15 @@ impl CreateVTab<'_> for FastqModule {
                 s.trim_matches('\'').to_string()
             })
             .unwrap();
+        let records_index = args
+            .iter()
+            .find(|arg| arg.starts_with("record_index="))
+            .map_or("false", |arg| {
+                arg.trim()
+                    .strip_prefix("record_index=")
+                    .unwrap_or(arg)
+                    .trim_matches('\'')
+            });
         let schema = "CREATE TABLE x(
                 id TEXT,
                 description TEXT,
@@ -134,11 +148,16 @@ impl CreateVTab<'_> for FastqModule {
         };
         let is_bgzf = fai_path.is_some() && filename.ends_with(".gz");
 
-        let table_name = args.get(2).ok_or("missing table name")?;
         db.execute(
             &format!(
                 "CREATE TABLE {table_name}_meta
         (source_file TEXT, file_mtime INTEGER, file_size INTEGER, built_at INTEGER)"
+            ),
+            (),
+        )?;
+        db.execute(
+            &format!(
+                "CREATE TABLE {table_name}_records (id TEXT, description TEXT, length INTEGER, gc_content REAL, header_offset INTEGER)"
             ),
             (),
         )?;
@@ -161,6 +180,72 @@ impl CreateVTab<'_> for FastqModule {
             ),
             params![filename.as_str(), file_mtime, file_size, built_at],
         )?;
+
+        if records_index != "false" {
+            let mut create_records_stmt = db.prepare(&format!(
+                "INSERT INTO {table_name}_records (id, description, length, gc_content, header_offset) VALUES (?,?,?,?,?)"
+            ))?;
+            let is_compressed = filename.ends_with(".gz");
+            let inner: Box<dyn Read> = if is_compressed {
+                let file = File::open(&filename)
+                    .map_err(|e| Error::from(format!("Cannot open '{}': {}", filename, e)))?;
+                Box::new(GzDecoder::new(BufReader::new(file)))
+            } else {
+                let file = File::open(&filename)
+                    .map_err(|e| Error::from(format!("Cannot open '{}': {}", filename, e)))?;
+                Box::new(BufReader::new(file))
+            };
+            let mut fastq_reader = seq_io::fastq::Reader::new(inner);
+
+            while let Some(result) = fastq_reader.next() {
+                let record = result
+                    .map_err(|e| Error::from(e.to_string()))?
+                    .to_owned_record();
+                let header_offset: Option<i64> = if is_compressed {
+                    None
+                } else {
+                    Some(fastq_reader.position().byte() as i64)
+                };
+                let id = String::from_utf8_lossy(record.id_bytes());
+                let desc = record
+                    .desc_bytes()
+                    .map(String::from_utf8_lossy)
+                    .unwrap_or_default();
+                let gc = compute_gc(record.sequence_bytes());
+                create_records_stmt.execute(params!(
+                    id.as_ref(),
+                    desc.as_ref(),
+                    record.seq().len() as i64,
+                    gc,
+                    header_offset
+                ))?;
+            }
+
+            if records_index == "true" {
+                for col in DEFAULT_RECORD_INDEXES {
+                    db.execute(
+                        &format!(
+                            "CREATE INDEX {table_name}_records_{col}_idx ON {table_name}_records ({col});"
+                        ),
+                        (),
+                    )?;
+                }
+            } else if records_index
+                .split(",")
+                .all(|col| ALLOWED_RECORD_COLUMNS.contains(&col))
+            {
+                for col in records_index.split(",") {
+                    db.execute(
+                        &format!(
+                            "CREATE INDEX {table_name}_records_{col}_idx ON {table_name}_records ({col});"
+                        ),
+                        (),
+                    )?;
+                }
+            } else {
+                return Err(Error::from("Malformed".to_string()));
+            }
+        }
 
         Ok((
             schema.to_owned(),
