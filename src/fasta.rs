@@ -85,13 +85,13 @@ pub struct FastaModule {
     is_bgzf: bool,
 }
 impl CreateVTab<'_> for FastaModule {
+    const SHADOW_NAMES: &'static [&'static str] = &["meta"];
+
     fn create(
         db: &'_ VTabConnection,
         _aux: &'_ Self::Aux,
         args: &[&str],
     ) -> Result<(String, Self)> {
-        const SHADOW_NAMES: &'static [&'static str] = &["meta"];
-
         let filename = args
             .get(3)
             .map(|s| {
