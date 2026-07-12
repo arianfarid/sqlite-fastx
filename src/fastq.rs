@@ -6,7 +6,6 @@ use crate::{
     reader::{ReadStrategy, SequenceReader, SequenceRecord},
 };
 use flate2::read::GzDecoder;
-use noodles_bgzf;
 use seq_io::{fastq::*, policy::StdPolicy};
 use sqlite3_ext::{Error, vtab::*, *};
 use std::{
@@ -37,11 +36,10 @@ impl SequenceReader for FastqSequenceReader {
             match reader.read_record(&mut buf) {
                 Ok(0) => return None,
                 Ok(_) => {
-                    if let Ok(record) = buf.parse::<noodles_fastq::fai::Record>() {
-                        if record.name() == id {
+                    if let Ok(record) = buf.parse::<noodles_fastq::fai::Record>()
+                        && record.name() == id {
                             return Some(record.sequence_offset());
                         }
-                    }
                 }
                 Err(_) => return None,
             }
