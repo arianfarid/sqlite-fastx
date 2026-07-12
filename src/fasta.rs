@@ -84,14 +84,17 @@ pub struct FastaModule {
     fai_path: Option<String>,
     is_bgzf: bool,
 }
-impl CreateVTab<'_> for FastaModule {
-    const SHADOW_NAMES: &'static [&'static str] = &["meta"];
+const ALLOWED_RECORD_COLUMNS: &[&str] = &["id", "description", "length", "gc_content"];
+const DEFAULT_RECORD_INDEXES: &[&str] = &["id", "length", "gc_content"];
 
+impl CreateVTab<'_> for FastaModule {
+    const SHADOW_NAMES: &'static [&'static str] = &["meta", "records"];
     fn create(
         db: &'_ VTabConnection,
         _aux: &'_ Self::Aux,
         args: &[&str],
     ) -> Result<(String, Self)> {
+        let table_name = args.get(2).ok_or("missing table name")?;
         let filename = args
             .get(3)
             .map(|s| {
@@ -100,6 +103,16 @@ impl CreateVTab<'_> for FastaModule {
                 s.trim_matches('\'').to_string()
             })
             .unwrap();
+        // Some kind of value, implicitly false
+        let records_index = args
+            .iter()
+            .find(|arg| arg.starts_with("record_index="))
+            .map_or("false", |arg| {
+                arg.trim()
+                    .strip_prefix("record_index=")
+                    .unwrap_or(arg)
+                    .trim_matches('\'')
+            });
         let schema = "CREATE TABLE x(
                 id TEXT,
                 description TEXT,
@@ -123,11 +136,16 @@ impl CreateVTab<'_> for FastaModule {
             }
         };
 
-        let table_name = args.get(2).ok_or("missing table name")?;
         db.execute(
             &format!(
                 "CREATE TABLE {table_name}_meta
         (source_file TEXT, file_mtime INTEGER, file_size INTEGER, built_at INTEGER)"
+            ),
+            (),
+        )?;
+        db.execute(
+            &format!(
+                "CREATE TABLE {table_name}_records (id TEXT, description TEXT, length INTEGER, gc_content REAL)"
             ),
             (),
         )?;
@@ -151,6 +169,35 @@ impl CreateVTab<'_> for FastaModule {
             params![filename.as_str(), file_mtime, file_size, built_at],
         )?;
 
+        if records_index != "false" {
+            // Todo: parse, insert records
+
+            if records_index == "true" {
+                for col in DEFAULT_RECORD_INDEXES {
+                    db.execute(
+                        &format!(
+                            "CREATE INDEX {table_name}_records_{col}_idx ON {table_name}_records ({col});"
+                        ),
+                        (),
+                    )?;
+                }
+            } else if records_index
+                .split(",")
+                .all(|col| ALLOWED_RECORD_COLUMNS.contains(&col))
+            {
+                for col in records_index.split(",") {
+                    db.execute(
+                        &format!(
+                            "CREATE INDEX {table_name}_records_{col}_idx ON {table_name}_records ({col});"
+                        ),
+                        (),
+                    )?;
+                }
+            } else {
+                return Err(Error::from("Malformed".to_string()));
+            }
+        }
+
         Ok((
             schema.to_owned(),
             FastaModule {
@@ -169,6 +216,7 @@ impl VTab<'_> for FastaModule {
     type Aux = ();
     type Cursor = FastaCursor;
     fn connect(db: &VTabConnection, _aux: &Self::Aux, args: &[&str]) -> Result<(String, Self)> {
+        let table_name = args.get(2).ok_or("missing table name")?;
         let filename = args
             .get(3)
             .map(|s| {
@@ -177,6 +225,7 @@ impl VTab<'_> for FastaModule {
                 s.trim_matches('\'').to_string()
             })
             .unwrap();
+
         let schema = "CREATE TABLE x(
                 id TEXT,
                 description TEXT,
@@ -194,7 +243,6 @@ impl VTab<'_> for FastaModule {
         };
         let is_bgzf = fai_path.is_some() && filename.ends_with(".gz");
 
-        let table_name = args.get(2).ok_or("missing table name")?;
         let metadata = std::fs::metadata(&filename).ok();
         let file_size = metadata.as_ref().map(|m| m.len() as i64);
         let file_mtime = metadata
