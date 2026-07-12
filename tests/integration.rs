@@ -1870,3 +1870,176 @@ fn longest_homopolymer_on_fasta_table() {
     );
     assert!(max >= 1);
 }
+
+// --- FASTA meta table: creation + file-update tracking ---
+
+fn unique_tmp(suffix: &str) -> std::path::PathBuf {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!("sqlite_fastx_{nanos}_{suffix}"))
+}
+
+#[test]
+fn fasta_meta_created_populates_row() {
+    // A CREATE VIRTUAL TABLE writes a single {name}_meta row describing the source file.
+    let fa_path = unique_tmp("create.fa");
+    let db_path = unique_tmp("create.db");
+    std::fs::write(&fa_path, ">s1 first\nACGT\n").unwrap();
+    let size = std::fs::metadata(&fa_path).unwrap().len() as i64;
+
+    let db = Database::open(db_path.to_str().unwrap()).unwrap();
+    init(&db).unwrap();
+    db.execute(
+        &format!(
+            "CREATE VIRTUAL TABLE fa USING fasta('{}')",
+            fa_path.to_str().unwrap()
+        ),
+        (),
+    )
+    .unwrap();
+
+    assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fa_meta"), 1);
+    assert_eq!(
+        scalar_str(&db, "SELECT source_file FROM fa_meta"),
+        fa_path.to_str().unwrap()
+    );
+    assert_eq!(scalar_i64(&db, "SELECT file_size FROM fa_meta"), size);
+    assert!(scalar_i64(&db, "SELECT file_mtime FROM fa_meta") > 0);
+    assert!(scalar_i64(&db, "SELECT built_at FROM fa_meta") > 0);
+
+    drop(db);
+    let _ = std::fs::remove_file(&fa_path);
+    let _ = std::fs::remove_file(&db_path);
+}
+
+#[test]
+fn fasta_meta_tracks_file_update_on_reconnect() {
+    // If the source file changes between sessions, reconnecting refreshes the meta row.
+    let fa_path = unique_tmp("update.fa");
+    let db_path = unique_tmp("update.db");
+    std::fs::write(&fa_path, ">s1 first\nACGT\n").unwrap();
+    let original_size = std::fs::metadata(&fa_path).unwrap().len() as i64;
+
+    // Session 1: create the table (runs xCreate, populating the meta row).
+    {
+        let db = Database::open(db_path.to_str().unwrap()).unwrap();
+        init(&db).unwrap();
+        db.execute(
+            &format!(
+                "CREATE VIRTUAL TABLE fa USING fasta('{}')",
+                fa_path.to_str().unwrap()
+            ),
+            (),
+        )
+        .unwrap();
+        assert_eq!(
+            scalar_i64(&db, "SELECT file_size FROM fa_meta"),
+            original_size
+        );
+    }
+
+    // Grow the file so its size changes.
+    std::fs::write(&fa_path, ">s1 first\nACGT\n>s2 second\nAAAAAAAAAAAA\n").unwrap();
+    let new_size = std::fs::metadata(&fa_path).unwrap().len() as i64;
+    assert_ne!(new_size, original_size);
+
+    // Session 2: reopen and touch the table so xConnect fires and refreshes the meta row.
+    {
+        let db = Database::open(db_path.to_str().unwrap()).unwrap();
+        init(&db).unwrap();
+        assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fa"), 2);
+
+        assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fa_meta"), 1);
+        assert_eq!(scalar_i64(&db, "SELECT file_size FROM fa_meta"), new_size);
+    }
+
+    let _ = std::fs::remove_file(&fa_path);
+    let _ = std::fs::remove_file(&db_path);
+}
+
+// --- FASTQ meta table: creation + file-update tracking ---
+
+#[test]
+fn fastq_meta_created_populates_row() {
+    // A CREATE VIRTUAL TABLE writes a single {name}_meta row describing the source file.
+    let fq_path = unique_tmp("create.fastq");
+    let db_path = unique_tmp("create_fq.db");
+    std::fs::write(&fq_path, "@r1 first\nACGT\n+\nIIII\n").unwrap();
+    let size = std::fs::metadata(&fq_path).unwrap().len() as i64;
+
+    let db = Database::open(db_path.to_str().unwrap()).unwrap();
+    init(&db).unwrap();
+    db.execute(
+        &format!(
+            "CREATE VIRTUAL TABLE fq USING fastq('{}')",
+            fq_path.to_str().unwrap()
+        ),
+        (),
+    )
+    .unwrap();
+
+    assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fq_meta"), 1);
+    assert_eq!(
+        scalar_str(&db, "SELECT source_file FROM fq_meta"),
+        fq_path.to_str().unwrap()
+    );
+    assert_eq!(scalar_i64(&db, "SELECT file_size FROM fq_meta"), size);
+    assert!(scalar_i64(&db, "SELECT file_mtime FROM fq_meta") > 0);
+    assert!(scalar_i64(&db, "SELECT built_at FROM fq_meta") > 0);
+
+    drop(db);
+    let _ = std::fs::remove_file(&fq_path);
+    let _ = std::fs::remove_file(&db_path);
+}
+
+#[test]
+fn fastq_meta_tracks_file_update_on_reconnect() {
+    // If the source file changes between sessions, reconnecting refreshes the meta row.
+    let fq_path = unique_tmp("update.fastq");
+    let db_path = unique_tmp("update_fq.db");
+    std::fs::write(&fq_path, "@r1 first\nACGT\n+\nIIII\n").unwrap();
+    let original_size = std::fs::metadata(&fq_path).unwrap().len() as i64;
+
+    // Session 1: create the table (runs xCreate, populating the meta row).
+    {
+        let db = Database::open(db_path.to_str().unwrap()).unwrap();
+        init(&db).unwrap();
+        db.execute(
+            &format!(
+                "CREATE VIRTUAL TABLE fq USING fastq('{}')",
+                fq_path.to_str().unwrap()
+            ),
+            (),
+        )
+        .unwrap();
+        assert_eq!(
+            scalar_i64(&db, "SELECT file_size FROM fq_meta"),
+            original_size
+        );
+    }
+
+    // Grow the file so its size changes.
+    std::fs::write(
+        &fq_path,
+        "@r1 first\nACGT\n+\nIIII\n@r2 second\nAAAAAAAAAAAA\n+\nIIIIIIIIIIII\n",
+    )
+    .unwrap();
+    let new_size = std::fs::metadata(&fq_path).unwrap().len() as i64;
+    assert_ne!(new_size, original_size);
+
+    // Session 2: reopen and touch the table so xConnect fires and refreshes the meta row.
+    {
+        let db = Database::open(db_path.to_str().unwrap()).unwrap();
+        init(&db).unwrap();
+        assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fq"), 2);
+
+        assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fq_meta"), 1);
+        assert_eq!(scalar_i64(&db, "SELECT file_size FROM fq_meta"), new_size);
+    }
+
+    let _ = std::fs::remove_file(&fq_path);
+    let _ = std::fs::remove_file(&db_path);
+}

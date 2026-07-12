@@ -105,7 +105,7 @@ pub struct FastqModule {
 }
 impl CreateVTab<'_> for FastqModule {
     fn create(
-        _db: &'_ VTabConnection,
+        db: &'_ VTabConnection,
         _aux: &'_ Self::Aux,
         args: &[&str],
     ) -> Result<(String, Self)> {
@@ -135,6 +135,35 @@ impl CreateVTab<'_> for FastqModule {
             None
         };
         let is_bgzf = fai_path.is_some() && filename.ends_with(".gz");
+
+        let table_name = args.get(2).ok_or("missing table name")?;
+        db.execute(
+            &format!(
+                "CREATE TABLE {table_name}_meta
+        (source_file TEXT, file_mtime INTEGER, file_size INTEGER, built_at INTEGER)"
+            ),
+            (),
+        )?;
+
+        let metadata = std::fs::metadata(&filename).ok();
+        let file_size = metadata.as_ref().map(|m| m.len() as i64);
+        let file_mtime = metadata
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64);
+        let built_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        db.execute(
+            &format!(
+                "INSERT INTO {table_name}_meta (source_file, file_mtime, file_size, built_at)
+        VALUES (?,?,?,?)"
+            ),
+            params![filename.as_str(), file_mtime, file_size, built_at],
+        )?;
+
         Ok((
             schema.to_owned(),
             FastqModule {
@@ -152,7 +181,7 @@ impl CreateVTab<'_> for FastqModule {
 impl VTab<'_> for FastqModule {
     type Aux = ();
     type Cursor = FastqCursor;
-    fn connect(_db: &VTabConnection, _aux: &Self::Aux, args: &[&str]) -> Result<(String, Self)> {
+    fn connect(db: &VTabConnection, _aux: &Self::Aux, args: &[&str]) -> Result<(String, Self)> {
         let filename = args
             .get(3)
             .map(|s| {
@@ -179,6 +208,28 @@ impl VTab<'_> for FastqModule {
             None
         };
         let is_bgzf = fai_path.is_some() && filename.ends_with(".gz");
+
+        let table_name = args.get(2).ok_or("missing table name")?;
+        let metadata = std::fs::metadata(&filename).ok();
+        let file_size = metadata.as_ref().map(|m| m.len() as i64);
+        let file_mtime = metadata
+            .as_ref()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64);
+        let built_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        db.execute(
+            &format!(
+                "UPDATE {table_name}_meta
+        SET file_mtime = ?, file_size = ?, built_at = ?
+        WHERE file_mtime IS NOT ? OR file_size IS NOT ?"
+            ),
+            params![file_mtime, file_size, built_at, file_mtime, file_size],
+        )?;
+
         Ok((
             schema.to_owned(),
             FastqModule {
