@@ -26,6 +26,10 @@ pub struct SequenceCursor<R: SequenceReader> {
     pub done: bool,
     pub exit_early: bool,
     pub is_bgzf: bool,
+    pub connection: *mut sqlite3_ext::ffi::sqlite3,
+    pub table_name: String,
+    pub indexed_columns: Vec<String>,
+    pub index_fresh: bool,
 }
 
 impl<R: SequenceReader> SequenceCursor<R> {

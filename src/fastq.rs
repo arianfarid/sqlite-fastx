@@ -102,6 +102,8 @@ pub struct FastqModule {
     is_bgzf: bool,
     indexed_columns: Vec<String>,
     index_fresh: bool,
+    connection: *mut sqlite3_ext::ffi::sqlite3,
+    table_name: String,
 }
 const ALLOWED_RECORD_COLUMNS: &[&str] = &["id", "description", "length", "gc_content"];
 const DEFAULT_RECORD_INDEXES: &[&str] = &["id", "length", "gc_content"];
@@ -261,6 +263,8 @@ impl CreateVTab<'_> for FastqModule {
                 is_bgzf,
                 indexed_columns: ico,
                 index_fresh: true,
+                connection: unsafe { db.as_mut_ptr() },
+                table_name: table_name.to_string(),
             },
         ))
     }
@@ -337,6 +341,8 @@ impl VTab<'_> for FastqModule {
                 is_bgzf,
                 indexed_columns,
                 index_fresh,
+                connection: unsafe { db.as_mut_ptr() },
+                table_name: table_name.to_string(),
             },
         ))
     }
@@ -445,6 +451,10 @@ impl VTab<'_> for FastqModule {
             done: false,
             exit_early: false,
             is_bgzf: self.is_bgzf,
+            connection: self.connection,
+            table_name: self.table_name.clone(),
+            indexed_columns: self.indexed_columns.clone(),
+            index_fresh: self.index_fresh,
         })
     }
 }
