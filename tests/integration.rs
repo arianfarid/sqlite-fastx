@@ -1960,8 +1960,9 @@ fn fasta_meta_created_populates_row() {
 }
 
 #[test]
-fn fasta_meta_tracks_file_update_on_reconnect() {
-    // If the source file changes between sessions, reconnecting refreshes the meta row.
+fn fasta_meta_is_build_snapshot_unchanged_on_reconnect() {
+    // _meta records the file state _records was built from; reconnecting must NOT overwrite it,
+    // otherwise the staleness signal (used to gate the record index) would be lost.
     let fa_path = unique_tmp("update.fa");
     let db_path = unique_tmp("update.db");
     std::fs::write(&fa_path, ">s1 first\nACGT\n").unwrap();
@@ -1990,14 +1991,17 @@ fn fasta_meta_tracks_file_update_on_reconnect() {
     let new_size = std::fs::metadata(&fa_path).unwrap().len() as i64;
     assert_ne!(new_size, original_size);
 
-    // Session 2: reopen and touch the table so xConnect fires and refreshes the meta row.
+    // Session 2: reopen and touch the table so xConnect fires. _meta stays at the build snapshot.
     {
         let db = Database::open(db_path.to_str().unwrap()).unwrap();
         init(&db).unwrap();
         assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fa"), 2);
 
         assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fa_meta"), 1);
-        assert_eq!(scalar_i64(&db, "SELECT file_size FROM fa_meta"), new_size);
+        assert_eq!(
+            scalar_i64(&db, "SELECT file_size FROM fa_meta"),
+            original_size
+        );
     }
 
     let _ = std::fs::remove_file(&fa_path);
@@ -2040,8 +2044,9 @@ fn fastq_meta_created_populates_row() {
 }
 
 #[test]
-fn fastq_meta_tracks_file_update_on_reconnect() {
-    // If the source file changes between sessions, reconnecting refreshes the meta row.
+fn fastq_meta_is_build_snapshot_unchanged_on_reconnect() {
+    // _meta records the file state _records was built from; reconnecting must NOT overwrite it,
+    // otherwise the staleness signal (used to gate the record index) would be lost.
     let fq_path = unique_tmp("update.fastq");
     let db_path = unique_tmp("update_fq.db");
     std::fs::write(&fq_path, "@r1 first\nACGT\n+\nIIII\n").unwrap();
@@ -2074,14 +2079,17 @@ fn fastq_meta_tracks_file_update_on_reconnect() {
     let new_size = std::fs::metadata(&fq_path).unwrap().len() as i64;
     assert_ne!(new_size, original_size);
 
-    // Session 2: reopen and touch the table so xConnect fires and refreshes the meta row.
+    // Session 2: reopen and touch the table so xConnect fires. _meta stays at the build snapshot.
     {
         let db = Database::open(db_path.to_str().unwrap()).unwrap();
         init(&db).unwrap();
         assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fq"), 2);
 
         assert_eq!(scalar_i64(&db, "SELECT COUNT(*) FROM fq_meta"), 1);
-        assert_eq!(scalar_i64(&db, "SELECT file_size FROM fq_meta"), new_size);
+        assert_eq!(
+            scalar_i64(&db, "SELECT file_size FROM fq_meta"),
+            original_size
+        );
     }
 
     let _ = std::fs::remove_file(&fq_path);

@@ -83,6 +83,8 @@ pub struct FastaModule {
     filename: Option<String>,
     fai_path: Option<String>,
     is_bgzf: bool,
+    indexed_columns: Vec<String>,
+    index_fresh: bool,
 }
 const ALLOWED_RECORD_COLUMNS: &[&str] = &["id", "description", "length", "gc_content"];
 const DEFAULT_RECORD_INDEXES: &[&str] = &["id", "length", "gc_content"];
@@ -139,7 +141,7 @@ impl CreateVTab<'_> for FastaModule {
         db.execute(
             &format!(
                 "CREATE TABLE {table_name}_meta
-        (source_file TEXT, file_mtime INTEGER, file_size INTEGER, built_at INTEGER)"
+        (source_file TEXT, indexed_columns TEXT, file_mtime INTEGER, file_size INTEGER, built_at INTEGER)"
             ),
             (),
         )?;
@@ -161,15 +163,35 @@ impl CreateVTab<'_> for FastaModule {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
+
+        let indexed_columns: String = if records_index == "false" {
+            "".to_string()
+        } else if records_index == "true" {
+            DEFAULT_RECORD_INDEXES.join(",")
+        } else {
+            let cols = records_index.replace(' ', "");
+            if cols.split(',').all(|col| ALLOWED_RECORD_COLUMNS.contains(&col)) {
+                cols
+            } else {
+                return Err(Error::from("Malformed".to_string()));
+            }
+        };
+
+        let ico: Vec<String> = if indexed_columns.is_empty() {
+            Vec::new()
+        } else {
+            indexed_columns.split(',').map(str::to_string).collect()
+        };
+
         db.execute(
             &format!(
-                "INSERT INTO {table_name}_meta (source_file, file_mtime, file_size, built_at)
-        VALUES (?,?,?,?)"
+                "INSERT INTO {table_name}_meta (source_file, indexed_columns, file_mtime, file_size, built_at)
+        VALUES (?,?,?,?,?)"
             ),
-            params![filename.as_str(), file_mtime, file_size, built_at],
+            params![filename.as_str(), &indexed_columns, file_mtime, file_size, built_at],
         )?;
 
-        if records_index != "false" {
+        if !ico.is_empty() {
             let mut create_records_stmt = db.prepare(&format!(
                 "INSERT INTO {table_name}_records (id, description, length, gc_content, header_offset) VALUES (?,?,?,?,?)"
             ))?;
@@ -209,29 +231,13 @@ impl CreateVTab<'_> for FastaModule {
                 ))?;
             }
 
-            if records_index == "true" {
-                for col in DEFAULT_RECORD_INDEXES {
-                    db.execute(
-                        &format!(
-                            "CREATE INDEX {table_name}_records_{col}_idx ON {table_name}_records ({col});"
-                        ),
-                        (),
-                    )?;
-                }
-            } else if records_index
-                .split(",")
-                .all(|col| ALLOWED_RECORD_COLUMNS.contains(&col))
-            {
-                for col in records_index.split(",") {
-                    db.execute(
-                        &format!(
-                            "CREATE INDEX {table_name}_records_{col}_idx ON {table_name}_records ({col});"
-                        ),
-                        (),
-                    )?;
-                }
-            } else {
-                return Err(Error::from("Malformed".to_string()));
+            for col in &ico {
+                db.execute(
+                    &format!(
+                        "CREATE INDEX {table_name}_records_{col}_idx ON {table_name}_records ({col});"
+                    ),
+                    (),
+                )?;
             }
         }
 
@@ -241,6 +247,8 @@ impl CreateVTab<'_> for FastaModule {
                 filename: Some(filename),
                 fai_path,
                 is_bgzf,
+                indexed_columns: ico,
+                index_fresh: true,
             },
         ))
     }
@@ -287,18 +295,25 @@ impl VTab<'_> for FastaModule {
             .and_then(|m| m.modified().ok())
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs() as i64);
-        let built_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-        db.execute(
-            &format!(
-                "UPDATE {table_name}_meta
-        SET file_mtime = ?, file_size = ?, built_at = ?
-        WHERE file_mtime IS NOT ? OR file_size IS NOT ?"
-            ),
-            params![file_mtime, file_size, built_at, file_mtime, file_size],
+        let (index_column_row, built_mtime, built_size) = db.query_row(
+            &format!("SELECT indexed_columns, file_mtime, file_size FROM {table_name}_meta"),
+            (),
+            |row| {
+                let cols = row[0].get_str()?.to_string();
+                let mtime = (!row[1].is_null()).then(|| row[1].get_i64());
+                let size = (!row[2].is_null()).then(|| row[2].get_i64());
+                Ok((cols, mtime, size))
+            },
         )?;
+        let indexed_columns: Vec<String> = if index_column_row.is_empty() {
+            Vec::new()
+        } else {
+            index_column_row.split(',').map(str::to_string).collect()
+        };
+        let index_fresh = match (built_mtime, built_size, file_mtime, file_size) {
+            (Some(bm), Some(bs), Some(m), Some(s)) => bm == m && bs == s,
+            _ => false,
+        };
 
         Ok((
             schema.to_owned(),
@@ -306,6 +321,8 @@ impl VTab<'_> for FastaModule {
                 filename: Some(filename),
                 fai_path,
                 is_bgzf,
+                indexed_columns,
+                index_fresh,
             },
         ))
     }
